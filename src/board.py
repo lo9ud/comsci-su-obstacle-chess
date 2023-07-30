@@ -1,132 +1,54 @@
-import re
-from logger import Logger, StdOut, Errors, Infos
-from typing import TextIO
-from piece import Piece, Position
-
-
-logger = Logger(StdOut())
+from typing import Any
+from src.piece import Piece
+from src.game import Player
 
 class BoardNode:
-    def __init__(self, contents, modifiers) -> None:
-        self.contents = contents
-        self.walls = {
-            'n': False,
-            's': False,
-            'e': False,
-            'w': False
-        }
-        for mod in modifiers:
-            match mod:
-                case "d":
-                    self.trapdoor = "hidden"
-                case "o":
-                    self.trapdoor = "open"
-                case "m":
-                    self.mined = True
-                #TODO: set other BoardNodes wall states
-                case "|":
-                    self.walls['w'] = True
-                case "_":
-                    self.walls['s'] = True
-                    
-                case ".":
-                    continue
-                case _:
-                    raise ValueError(f"Invalid modifier {mod}!")
-        
-    def swap(self, other: "BoardNode") -> None:
-        self.contents, other.contents = other.contents, self.contents
+    def __init__(self) -> None:
+        raise NotImplementedError
 
 class Board:
-    def __init__(self, board_array: list[list[BoardNode]]) -> None:
-        self.board_array = board_array
+    """A representation of the board state.
+
+    Maintains the boards current state, and provides methods for manipulating it.
+    """
+    def __init__(self, board:list[list[BoardNode]], state:dict[str, bool|Player|None]|None = None) -> None:
+        # The boards nodes, as a 2D array
+        self.__nodes : list[list[BoardNode]] = board
         
-    def __getitem__(self, position: Position | tuple[int, int]) -> BoardNode:
-        if isinstance(position, Position):
-            position = position.position
-        return self.board_array[position[0]][position[1]]
+        # the boards state, including castling rights, en passant, and the current player
+        # if state is not provided, it is assumed to be the standard starting state
+        # TODO: see if state must be verified
+        self.__state = state or {
+            "castling": {
+                "black": {
+                    "queenside": True,
+                    "kingside": True,
+                },
+                "white": {
+                    "queenside": True,
+                    "kingside": True,
+                }
+            },
+            "enpassant": None,
+            "player": Player.WHITE
+        }
     
-    def __setitem__(self, position: Position | tuple[int, int], value: BoardNode) -> None:
-        if isinstance(position, Position):
-            position = position.position
-        self.board_array[position[0]][position[1]] = value
-    
-    def apply_file(self, file: TextIO):
+    @classmethod
+    def standard_board(cls) -> "Board":
+        """Returns a board that is in standard starting positions.
+        """
         raise NotImplementedError
     
     @classmethod
-    def from_file(cls, file: TextIO) -> "Board":
-        board_array = []
-        lines_read = 0
-        for line in file.readlines():
-            if re.match(r"\s*%", line):
-                # Comment line
-                continue
-            
-            # Valid line
-            lines_read += 1
-            
-            # Too many lines
-            if lines_read > 9:
-                break
-            
-            # Status line
-            if lines_read > 8:
-                status_regex = re.compile(
-                    # white vs black
-                    r"(w|b)\s"
-                    # white remainig walls
-                    +r"\d\s"
-                    # black remaining walls
-                    +r"\d\s"
-                    # castling rights
-                    +r"((\+|-)\s){4}"
-                    # en-pasant target
-                    +r"(-|(\w\d))\s"
-                    # halfmoves
-                    +r"\d+"
-                ) # matches structurally-correct status lines
-                
-                match = status_regex.match(line)
-                if match:
-                    raise NotImplementedError
-                else:
-                    logger.error(Errors.illegal_status)
-            
-            # Board line
-            board_line = []
-            
-            # the current modifiers for the board node
-            mod_stack = []
-            for col, char in enumerate(line):
-                if char == "\n":
-                    continue
-                
-                match char.lower():
-                    # Empty blocks
-                    case "."|"o"|"d"|"m":
-                        board_line.append(BoardNode(None, mod_stack + [char]))
-                        mod_stack = []
-                        
-                    # special case to expand x into d,m
-                    case "x":
-                        board_line.append(BoardNode(None, mod_stack + ['m', 'd']))
-                        mod_stack = []
-                        
-                    # A piece
-                    case "p"|"r"|"b"|"q"|"k"|"n":
-                        board_line.append(BoardNode(Piece(char), mod_stack))
-                        mod_stack = []
+    def from_file(cls, file) -> "Board":
+        """Returns a board that is in the state described by the given file.
+        """
+        raise NotImplementedError
+    
+class Move:
+    """Represents a move in the game.
 
-                    # A piece modifier
-                    case "x"|"-"|"|":
-                        mod_stack.append(char)
-                        
-                    # Invalid descriptor
-                    case _:
-                        logger.error(Errors.illegal_board, str(Position((col, lines_read))))
-            board_array.append(board_line)
-        return cls(board_array)
-            
-            
-            
+    Stores the move's origin and destination, and the piece that moved.
+    """
+    def __init__(self, origin: tuple[int, int], destination: tuple[int, int], piece: Piece) -> None:
+        raise NotImplementedError

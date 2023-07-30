@@ -1,0 +1,11 @@
+% Board file with 3 walls , 2 mines and 1 trapdoor .
+rnbqkbnr
+ppp |_ ppppp
+........
+.. X .....
+.|..... M .
+........
+PPPP _ PPPP
+RNBQKBNR
+% status line below , note spacing
+w 1 1 + + + + - 0
