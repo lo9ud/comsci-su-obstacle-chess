@@ -122,3 +122,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# VSCode
+.deepsource.toml
+*.code-workspace
+/.vscode
+
+# testcase files
+/testcases
