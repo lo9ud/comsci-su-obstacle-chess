@@ -229,6 +229,6 @@ class Game:
         move : Move
             The move to play.
         """
-        self.history.push(move, self.board)
+        self.history.push(move, self.board, self.state)
         self.board = self.board.apply_move(move)
         
