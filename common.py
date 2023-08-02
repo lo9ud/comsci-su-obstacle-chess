@@ -2,7 +2,7 @@
 """
 import stdio
 
-
+# TODO: IF typing is allowed, replace Result with type alias and rename Result to __Result
 class Result:
     """A result monad with two possible states:
 
@@ -55,9 +55,24 @@ class Result:
         retval = f(self.__payload, *args, **kwargs)
         return retval if isinstance(retval, Result) else Success(retval)
 
+    def on_err(self, f, *args, **kwargs):
+        """Applies a function to the payload of this Failure
 
+        Successes pass through unchanged
+
+        Parameters
+        ----------
+        f : function
+            The function to perform, that returns nothing
+
+        Returns
+        -------
+        Result
+            The original Result
+        """
+        return self
 class Success(Result):
-    def __init__(self, payload):
+    def __init__(self, payload = None):
         super().__init__(payload)
 
 
@@ -71,6 +86,10 @@ class Failure(Result):
         super().__init__(reason)
 
     def and_then(self, f, *args, **kwargs) -> Result:
+        return self
+    
+    def on_err(self, f, *args):
+        f(*args)
         return self
 
 

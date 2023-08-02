@@ -19,8 +19,9 @@ class Game:
         def __iter__(self):
             return iter(self.__stack)
 
-        def push(self, move: Move, board: Board) -> None:
+        def push(self, move: Move, board: Board) -> Result:
             self.__stack.append((board, move))
+            return Success((move, board))
 
         def pop(self) -> tuple[Board, Move]:
             return self.__stack.pop()
@@ -247,8 +248,8 @@ class Game:
                     [j for i, j in bishops[player]],
                 )
             )
-            # if there is not at least one on each color
-            if 0 not in bishop_squares or 1 not in bishop_squares:
+            # if there is not at least one on each color (given that there are at least two bishops)
+            if (0 not in bishop_squares or 1 not in bishop_squares) and len(bishops) < 2:
                 # TODO: which square to error on for this rule? (defaulting to last placed bishop)
                 return Failure(Error.ILLEGAL_BOARD % algebraic(*bishops[player][-1]))
 
@@ -259,7 +260,10 @@ class Game:
         # Validation succeeded, return Success
         return Success(None)
 
-    def play_move(self, move: Move) -> None:
+    def set_board(self, new_board):
+        self.board = new_board
+    
+    def play_move(self, move_str: str) -> Result:
         """Plays the given move.
 
         Parameters
@@ -267,5 +271,17 @@ class Game:
         move : Move
             The move to play.
         """
-        self.history.push(move, self.board)
-        self.board = self.board.apply_move(move)
+        # Create the move from the provided string
+        play_result = Move.from_str(move_str)\
+        .and_then(
+            # Push the new move and the old board onto the history
+            lambda move: self.history.push(move, self.board)
+        ).and_then(
+            # Apply the move to the board
+            lambda move, board: self.board.apply_move(move)
+        ).and_then(
+            # Set the current board to the new one
+            lambda new_board: self.set_board(new_board)
+        ) # If any of these fail, the Failure passes through and is returned
+        return play_result
+        

@@ -2,7 +2,7 @@ from typing import Iterator, TextIO
 from piece import Piece
 from common import *
 from output import *
-from move import Move
+from move import Move, PlaceMine, PlaceTrapdoor, PlaceWall, KingCastle, QueenCastle
 
 
 class TrapdoorState:
@@ -137,7 +137,7 @@ class BoardNode:
         """Which walls are present on this tile"""
 
     def __str__(self) -> str:
-        return f"Node({self.contents=}, {self.mined=}, {self.trapdoor=}, {self.walls=})"
+        return f"Node({self.contents=}, {self.mined=}, {self.trapdoor=}, {Wall.to_str(self.walls)})"
 
     def canonical(self) -> str:
         node_str = ""
@@ -336,6 +336,9 @@ class Board:
         """Returns the node at the given index."""
         return self.__nodes[index[0]][index[1]]
 
+    def __setitem__(self, index: tuple[int, int], value: BoardNode):
+        self.__nodes[index[0]][index[1]] = value
+
     def __iter__(self) -> Iterator[list[BoardNode]]:
         """Iterates over rows of the boards nodes."""
         yield from self.__nodes
@@ -504,9 +507,60 @@ class Board:
         )
         return cls.from_str(standard_board_str, BoardState.standard_state())
 
-    def apply_move(self, move: Move) -> "Board":
-        """Applies the given move to the board, returning a new board and leaving the original unchanged."""
-        raise NotImplementedError
+    def apply_move(self, move: Move) -> Result:
+        """Applies the given move to the board, returning a new Result holding the board and leaving the original unchanged."""
+
+        # Validate the move against this board
+        if isinstance(k := move.validate(self), Failure):
+            # If validation fails, return the failure
+            return k
+
+        # Apply the move
+        match move: # TODO: complete move application
+            case Move():
+                # extract origin and destination
+                origin, dest = move.origin, move.destination
+
+                # swap contents of positions
+                self[origin].contents, self[dest].contents = (
+                    self[dest].contents,
+                    self[origin].contents,
+                )
+
+                # Return a Success
+                return Success(move)
+
+            case PlaceWall():
+                raise NotImplementedError
+
+            case PlaceMine():
+                raise NotImplementedError
+
+            case PlaceTrapdoor():
+                raise NotImplementedError
+
+            case KingCastle():
+                raise NotImplementedError
+
+            case QueenCastle():
+                raise NotImplementedError
+
+    def apply_moves(self, moves: list[Move]) -> Result:
+        """Applies a list of moves to the board"""
+        # The most recent result of a move
+        last = Success(self)
+
+        # For each move
+        for move in moves:
+            last.and_then(
+                # Apply that move to the board
+                self.apply_move(move)
+            )
+            # If the move failed, return the Failure early
+            if isinstance(last, Failure):
+                return last
+        # Return the new success
+        return last
 
     def normalise_walls(self):
         # normalise the board walls
