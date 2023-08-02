@@ -8,7 +8,7 @@ class Move:
     Stores the move's origin and destination, and provides methods for transforming it into several representations
     """
 
-    def __init__(self, player:int, origin: tuple[int, int], destination: tuple[int, int]) -> None:
+    def __init__(self, player: int, origin: tuple[int, int], destination: tuple[int, int]) -> None:
         self.player = player
         self.origin = origin
         self.destination = destination
@@ -26,8 +26,8 @@ class Move:
             The move in canonical notation
         """
         return f"{algebraic(*self.origin)}-{algebraic(*self.destination)}"
-    
-    def validate(self, board:"Board") -> Result:
+
+    def validate(self, board: "Board") -> Result:
         """Validates this move against the supplied board
 
         Parameters
@@ -54,7 +54,8 @@ class PlaceWall(Move):
 
     def canonical(self) -> str:
         # TODO: Implement the fact the only south/west walls are allowed
-        raise NotImplementedError("Cannot convert wall placement to canonical notation")
+        raise NotImplementedError(
+            "Cannot convert wall placement to canonical notation")
 
 
 class PlaceMine(Move):

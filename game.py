@@ -262,7 +262,7 @@ class Game:
 
     def set_board(self, new_board):
         self.board = new_board
-    
+
     def play_move(self, move_str: str) -> Result:
         """Plays the given move.
 
@@ -273,7 +273,7 @@ class Game:
         """
         # Create the move from the provided string
         play_result = Move.from_str(move_str)\
-        .and_then(
+            .and_then(
             # Push the new move and the old board onto the history
             lambda move: self.history.push(move, self.board)
         ).and_then(
@@ -282,6 +282,5 @@ class Game:
         ).and_then(
             # Set the current board to the new one
             lambda new_board: self.set_board(new_board)
-        ) # If any of these fail, the Failure passes through and is returned
+        )  # If any of these fail, the Failure passes through and is returned
         return play_result
-        

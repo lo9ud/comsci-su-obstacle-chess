@@ -3,6 +3,8 @@
 import stdio
 
 # TODO: IF typing is allowed, replace Result with type alias and rename Result to __Result
+
+
 class Result:
     """A result monad with two possible states:
 
@@ -71,8 +73,10 @@ class Result:
             The original Result
         """
         return self
+
+
 class Success(Result):
-    def __init__(self, payload = None):
+    def __init__(self, payload=None):
         super().__init__(payload)
 
 
@@ -87,7 +91,7 @@ class Failure(Result):
 
     def and_then(self, f, *args, **kwargs) -> Result:
         return self
-    
+
     def on_err(self, f, *args):
         f(*args)
         return self

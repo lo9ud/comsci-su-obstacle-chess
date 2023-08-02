@@ -516,7 +516,7 @@ class Board:
             return k
 
         # Apply the move
-        match move: # TODO: complete move application
+        match move:  # TODO: complete move application
             case Move():
                 # extract origin and destination
                 origin, dest = move.origin, move.destination

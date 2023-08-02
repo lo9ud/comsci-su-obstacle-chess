@@ -1,7 +1,10 @@
 import sys
-import game, board, output
+import game
+import board
+import output
 from common import *
-import instream, outstream
+import instream
+import outstream
 
 
 def main():  # sourcery skip: extract-method
@@ -19,7 +22,8 @@ def main():  # sourcery skip: extract-method
     input_file = instream.InStream(input_file_path)
     raw_file_contents = input_file.readAllLines()
     # Strip out comments and empty lines
-    comments_stripped = [line for line in raw_file_contents if not line.startswith("%")]
+    comments_stripped = [
+        line for line in raw_file_contents if not line.startswith("%")]
     file_contents = [
         line.replace("\n", "").replace(" ", "") for line in comments_stripped
     ]
