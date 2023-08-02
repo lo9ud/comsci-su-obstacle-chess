@@ -1,38 +1,63 @@
 import sys
-from src import game, board, output
+import game, board, output
+from common import *
+import instream, outstream
 
-DEBUG = True
 
-def get_input_or_fail(prompt:str) -> str:
-    if DEBUG:
-        return input(prompt)
-    else:
-        raise ValueError("No input file path provided")
+def main():  # sourcery skip: extract-method
+    if len(sys.argv) <= 2:  # too few arguments
+        return  # TODO: What do i do if there are no arguments/incorrect arguments?
 
-def main():
-    # Get the input and output file paths from the command line arguments
-    if len(sys.argv) > 1:
-        input_file_path, output_file_path, *game_file_path = sys.argv[1:]
-        if game_file_path:
-            game_file_path = game_file_path[0] # extracts the game file path from the list
-    else:
-        input_file_path = get_input_or_fail("Enter the input file path: ")
-        output_file_path = get_input_or_fail("Enter the output file path: ")
-    
-    # create a board from the input file
-    with open(input_file_path, 'r') as input_file:
-        file_contents = input_file.readlines()
-        # Strip out comments and empty lines
-        file_contents = [line.replace("\n", "").replace(" ","") for line in file_contents if not (line.startswith("%") and line not in {"\n", "\r", "\r\n",""})]
-        start_board = board.Board.from_str(file_contents[:-1])
-        start_state = board.BoardState.from_str(start_board, file_contents[-1])
-        
-    
+    # Unpack input_, output_ and game_ file paths
+    # using the list unpacking operator ensures this will succeed regardless of game_ path existing
+    input_file_path, output_file_path, *opt = sys.argv[1:]
+
+    # If the game_ path exists (i.e. the opt list has any elements), extract it from the list
+    game_file_path = opt[0] if len(opt) > 0 else ""
+
+    # Create a stream for the input
+    input_file = instream.InStream(input_file_path)
+    raw_file_contents = input_file.readAllLines()
+    # Strip out comments and empty lines
+    comments_stripped = [line for line in raw_file_contents if not line.startswith("%")]
+    file_contents = [
+        line.replace("\n", "").replace(" ", "") for line in comments_stripped
+    ]
+
+    # Attempt to create a boardstate
+    start_state = board.BoardState.from_str(file_contents[-1])
+    if isinstance(start_state, Failure):
+        # If the state creation failed, notify and early return
+        stdio.writeln(f"ERROR: {output.Error.ILLEGAL_STATUSLINE}")
+        return
+    # State creation passed, unwrap result
+    start_state = start_state.unwrap()
+
+    # Attempt to create a board
+    start_board = board.Board.from_str(file_contents[:-1], start_state)
+    if isinstance(start_board, Failure):
+        # If the board creation failed, notify and early return
+        stdio.writeln(f"ERROR: {start_board.unwrap()}")
+        return
+    # Board creation passed, unwrap result
+    start_board = start_board.unwrap()
+
     # instantiate the game
-    try:
-        current_game = game.Game(start_board, start_state)
-    except output.BoardError as e:
-        output.print_error(e.error, e.param)
-    
+    current_game = game.Game(start_board)
 
-if __name__ == '__main__': main()
+    # validate the board
+    validation_result = current_game.validate()
+    if isinstance(validation_result, Failure):
+        # Validation failed, print error to screen and early return
+        stdio.writeln(f"ERROR: {validation_result.unwrap()}")
+        return
+
+    # create the output file
+    output_file = outstream.OutStream(output_file_path)
+
+    # write the game state to the output file
+    output_file.write(current_game.canonical())
+
+
+if __name__ == "__main__":
+    main()

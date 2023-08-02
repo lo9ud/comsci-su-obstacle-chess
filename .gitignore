@@ -131,3 +131,4 @@ dmypy.json
 
 # testcase files
 /testcases
+/autotest
