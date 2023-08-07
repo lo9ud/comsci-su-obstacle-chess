@@ -1,4 +1,19 @@
 from common import *
+from typing import Any, Callable
+
+
+class PieceDelta:
+    """Defines the movement of a piece."""
+
+    def __init__(self, delta_f: Callable[["Move"], bool]) -> None:
+        self.__delta = delta_f
+        """A function that takes a move, and returns whether the move is valid for the piece."""
+
+    def __contains__(self, item: "Move") -> bool:
+        return self.__delta(item)
+
+    def __call__(self, move: "Move") -> bool:
+        return self.__delta(move)
 
 
 class Piece:
@@ -7,14 +22,18 @@ class Piece:
     Provides methods for representing the piece's state, and provides methods for manipulating it.
     """
 
-    def __init__(self, player: int) -> None:
-        self.player = player
+    delta = PieceDelta(lambda  _: False)
+    """The movement of the piece, as a PieceDelta with containment implemented."""
+    jumps = False
+    """Whether the piece can jump over other pieces and walls."""
+    def __init__(self, owner: int) -> None:
+        self.owner = owner
         """The player this piece belongs to"""
         self.name = self.__class__.__name__.lower()
         """A huma readable name for the piece in lowercase"""
 
     def __repr__(self) -> str:
-        return f"{self.name.capitalize()}({Player.canonical(self.player)})"
+        return f"{self.name.capitalize()}({Player.canonical(self.owner)})"
 
     def canonical(self) -> str:
         """Returns a string representation of the piece, using standard algebraic notation.
@@ -26,8 +45,23 @@ class Piece:
         """
         raise NotImplementedError
 
+    def can_move(self, move: "Move") -> bool:
+        """Returns whether the piece can move to the given location.
+
+        Parameters
+        ----------
+        move : Move
+            The move to check.
+
+        Returns
+        -------
+        bool
+            Whether the piece can move to the given location.
+        """
+        return move in self.delta
+    
     @staticmethod
-    def from_str(string: str) -> "Piece":
+    def from_str(string: str) -> Result["Piece"]:
         """Returns a piece from a string, using standard algebraic notation.
 
         Parameters
@@ -43,26 +77,32 @@ class Piece:
         player = Player.WHITE if string.isupper() else Player.BLACK
         match string.lower():
             case "p":
-                return Pawn(player)
+                return Success(Pawn(player))
             case "n":
-                return Knight(player)
+                return Success(Knight(player))
             case "b":
-                return Bishop(player)
+                return Success(Bishop(player))
             case "r":
-                return Rook(player)
+                return Success(Rook(player))
             case "q":
-                return Queen(player)
+                return Success(Queen(player))
             case "k":
-                return King(player)
+                return Success(King(player))
             case _:
-                raise ValueError(f"Invalid piece string: {string}")
+                return Failure()
 
 
 class Pawn(Piece):
     """A pawn."""
 
+    delta = PieceDelta(
+        lambda move: move.delta == (0, 1)  # Standard move
+        or move.delta == (0, 2)  # First move
+        or move.delta == (1, 1)  # Capture
+    )
+
     def canonical(self) -> str:
-        return "p" if self.player == Player.BLACK else "P"
+        return "p" if self.owner == Player.BLACK else "P"
 
     ...
 
@@ -70,8 +110,13 @@ class Pawn(Piece):
 class Knight(Piece):
     """A knight."""
 
+    delta = PieceDelta(
+        lambda move: move.delta == [1, 2]  # Standard move
+        or move.delta == [2, 1]  # Standard move
+    )
+    jumps = True
     def canonical(self) -> str:
-        return "n" if self.player == Player.BLACK else "N"
+        return "n" if self.owner == Player.BLACK else "N"
 
     ...
 
@@ -79,8 +124,10 @@ class Knight(Piece):
 class Bishop(Piece):
     """A bishop."""
 
+    delta = PieceDelta(lambda move: move.delta[0] == move.delta[1])  # Standard move
+
     def canonical(self) -> str:
-        return "b" if self.player == Player.BLACK else "B"
+        return "b" if self.owner == Player.BLACK else "B"
 
     ...
 
@@ -88,25 +135,39 @@ class Bishop(Piece):
 class Rook(Piece):
     """A rook."""
 
+    delta = PieceDelta(
+        lambda move: (
+            move.delta[0] == 0 and move.delta[1] > 0
+        )  # Standard (vertical) move
+        or (move.delta[1] == 0 and move.delta[0] > 0)  # Standard (horizontal) move
+    )
+
     def canonical(self) -> str:
-        return "r" if self.player == Player.BLACK else "R"
+        return "r" if self.owner == Player.BLACK else "R"
 
     ...
 
 
 class Queen(Piece):
     """A queen."""
-
+    delta = PieceDelta(
+        lambda move:
+            move.delta[0] == move.delta[1]  # Diagonal move
+            or (move.delta[0] == 0 and move.delta[1] > 0)  # Standard (vertical) move
+            or (move.delta[1] == 0 and move.delta[0] > 0)  # Standard (horizontal) move
+    )
     def canonical(self) -> str:
-        return "q" if self.player == Player.BLACK else "Q"
+        return "q" if self.owner == Player.BLACK else "Q"
 
     ...
 
 
 class King(Piece):
     """A king."""
-
+    delta = PieceDelta(
+        lambda move: move.delta[0] <= 1 and move.delta[1] <= 1  # Standard move
+    )
     def canonical(self) -> str:
-        return "k" if self.player == Player.BLACK else "K"
+        return "k" if self.owner == Player.BLACK else "K"
 
     ...

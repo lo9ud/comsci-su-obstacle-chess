@@ -1,1 +1,0 @@
-# comsci-su-obstacle-chess

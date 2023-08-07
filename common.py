@@ -1,9 +1,16 @@
 """Classses and functions common to all files
 """
-import stdio
+import sys
+from typing import Callable, TypeVar, Generic, Union
+
+def err_print(string, *args, **kwargs):
+    print(string, *args, file=sys.stderr, **kwargs)
+
 
 # TODO: IF typing is allowed, replace Result with type alias and rename Result to __Result
-class Result:
+T = TypeVar("T", covariant=True)
+E = TypeVar("E", covariant=True)
+class Result(Generic[T]):
     """A result monad with two possible states:
 
      - Success(payload)
@@ -12,10 +19,10 @@ class Result:
     This class provides a method unwrap to extract its payload
     """
 
-    def __init__(self, payload):
+    def __init__(self, payload:T):
         self.__payload = payload
 
-    def unwrap(self):
+    def unwrap(self) -> T:
         """Return the payload of this result
 
         Returns
@@ -36,8 +43,8 @@ class Result:
         self.__payload = payload
 
     def and_then(
-        self, f, *args, **kwargs
-    ) -> "Result":  # TODO: fix typing ie f:funtion[returns result]
+        self, f:Callable[[T], "Result[E]"|E], *args, **kwargs
+    ) -> "Result[E]":  # TODO: fix typing ie f:funtion[returns result]
         """Applies a function to the payload of this Result and return a new Result
 
         Failures pass through unchanged.
@@ -71,8 +78,10 @@ class Result:
             The original Result
         """
         return self
-class Success(Result):
-    def __init__(self, payload = None):
+
+
+class Success(Result, Generic[T]):
+    def __init__(self, payload:T=None):
         super().__init__(payload)
 
 
@@ -85,13 +94,12 @@ class Failure(Result):
     def __init__(self, reason: str = "") -> None:
         super().__init__(reason)
 
-    def and_then(self, f, *args, **kwargs) -> Result:
+    def and_then(self, f, *args, **kwargs) -> "Result":
         return self
-    
+
     def on_err(self, f, *args):
         f(*args)
         return self
-
 
 class Player:
     """Player enum
@@ -102,12 +110,18 @@ class Player:
     BLACK : auto -> The black player
     """
 
-    WHITE = 0
+    WHITE = -1
     BLACK = 1
 
     @staticmethod
-    def from_str(string: str):
-        return Player.WHITE if string.lower() == "w" else Player.BLACK
+    def from_str(string: str) -> Result[int]:
+        return (
+            Success(Player.WHITE)
+            if string.lower() == "w"
+            else Success(Player.BLACK)
+            if string.lower() == "b"
+            else Failure()
+        )
 
     @staticmethod
     def canonical(player):
@@ -129,7 +143,9 @@ def algebraic(x: int, y: int):
     str
         The algebraic notation for the coordinates
     """
-    return chr(y + 97) + str(7 - x + 1)
+    char_part = chr(x + 97)
+    int_part = str(8 - y)
+    return char_part + int_part
 
 
 def coords(alg: str) -> tuple[int, int]:
@@ -193,29 +209,31 @@ def is_white(i, j) -> bool:
 
 
 if __name__ == "__main__":
-    stdio.writeln("Testing algebraic()")
-    stdio.writeln("  a  b  c  d  e  f  g  h")
-    for i in range(8):
-        stdio.writef("%i ", i + 1)
-        for j in range(8):
-            stdio.writef("%s ", algebraic(i, j))
-        stdio.writeln()
+    print("Testing algebraic()")
+    for y in range(8):
+        for x in range(8):
+            print(f"{x=}|{y=}|{algebraic(x, y)} ", end = "")
+        print()
+    for y in range(8):
+        for x in range(8):
+            print(f"{algebraic(x, y)} ", end = "")
+        print()
 
-    stdio.writeln("\nTesting inverse algebraic()/coords()")
-    for i in range(8):
-        for j in range(8):
-            stdio.writef("%b ", coords(algebraic(i, j)) == (i, j))
-        stdio.writeln()
+    print("\nTesting inverse algebraic()/coords()")
+    for x in range(8):
+        for y in range(8):
+            print(str(coords(algebraic(x, y)) == (x, y)).ljust(5), end = "")
+        print()
 
-    stdio.writeln("\nTesting constrain()")
-    for i in range(8):
-        stdio.writef("(%i, %i)", constrain(i, 2, 5))
+    print("\nTesting constrain()")
+    for x in range(8):
+        print("(%i)"%(constrain(x, 2, 5)))
 
-    stdio.writeln("\nTesting is_white()")
-    stdio.writeln("Black squares are '░░', white squares are '██'")
-    stdio.writeln("  a b c d e f g h")
-    for i in range(8):
-        stdio.writef("%i ", i + 1)
-        for j in range(8):
-            stdio.write("██" if is_white(i, j) else "░░")
-        stdio.writeln()
+    print("\nTesting is_white()")
+    print("Black squares are '░░', white squares are '██'")
+    print("  a b c d e f g h")
+    for x in range(8):
+        print("%i "%(8-x), end = "")
+        for y in range(8):
+            print("██" if is_white(x, y) else "░░", end = "")
+        print()

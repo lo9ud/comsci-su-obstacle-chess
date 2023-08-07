@@ -1,10 +1,9 @@
 import sys
 import game, board, output
 from common import *
-import instream, outstream
 
 
-def main():  # sourcery skip: extract-method
+def main():
     if len(sys.argv) <= 2:  # too few arguments
         return  # TODO: What do i do if there are no arguments/incorrect arguments?
 
@@ -15,29 +14,34 @@ def main():  # sourcery skip: extract-method
     # If the game_ path exists (i.e. the opt list has any elements), extract it from the list
     game_file_path = opt[0] if len(opt) > 0 else ""
 
-    # Create a stream for the input
-    input_file = instream.InStream(input_file_path)
-    raw_file_contents = input_file.readAllLines()
+    # Read the file in
+    with open(input_file_path, "r") as input_file:
+        raw_file_contents = input_file.readlines()
     # Strip out comments and empty lines
     comments_stripped = [line for line in raw_file_contents if not line.startswith("%")]
     file_contents = [
-        line.replace("\n", "").replace(" ", "") for line in comments_stripped
+        line.replace("\n", "") for line in comments_stripped
     ]
 
+    # check for empty file:
+    if not file_contents:
+        # If empty, error on first tile and return
+        err_print(output.Error.ILLEGAL_BOARD % algebraic(0, 0))
+        return
     # Attempt to create a boardstate
     start_state = board.BoardState.from_str(file_contents[-1])
     if isinstance(start_state, Failure):
         # If the state creation failed, notify and early return
-        stdio.writeln(f"ERROR: {output.Error.ILLEGAL_STATUSLINE}")
+        err_print(f"ERROR: {output.Error.ILLEGAL_STATUSLINE}")
         return
     # State creation passed, unwrap result
     start_state = start_state.unwrap()
 
     # Attempt to create a board
-    start_board = board.Board.from_str(file_contents[:-1], start_state)
+    start_board = board.Board.from_strs(file_contents[:-1], start_state)
     if isinstance(start_board, Failure):
         # If the board creation failed, notify and early return
-        stdio.writeln(f"ERROR: {start_board.unwrap()}")
+        err_print(f"ERROR: {start_board.unwrap()}")
         return
     # Board creation passed, unwrap result
     start_board = start_board.unwrap()
@@ -49,14 +53,13 @@ def main():  # sourcery skip: extract-method
     validation_result = current_game.validate()
     if isinstance(validation_result, Failure):
         # Validation failed, print error to screen and early return
-        stdio.writeln(f"ERROR: {validation_result.unwrap()}")
+        err_print(f"ERROR: {validation_result.unwrap()}")
         return
 
     # create the output file
-    output_file = outstream.OutStream(output_file_path)
-
-    # write the game state to the output file
-    output_file.write(current_game.canonical())
+    with open(output_file_path, "w") as output_file:
+        # write the game state to the output file
+        output_file.write(current_game.canonical())
 
 
 if __name__ == "__main__":
