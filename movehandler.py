@@ -50,9 +50,11 @@ class RemoteConnection:
 
         # add the socket to the multicast group
         mreq = struct.pack(
-            "4sl", socket.inet_aton(RemoteConnection.multicast_group), socket.INADDR_ANY
+            "4sl", socket.inet_aton(
+                RemoteConnection.multicast_group), socket.INADDR_ANY
         )
-        mcast_sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        mcast_sock.setsockopt(
+            socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
         # set the timeout
         mcast_sock.settimeout(5)
@@ -162,7 +164,8 @@ class RemoteConnection:
             # send a multicast request
             mcast_sock.sendto(
                 bytes(friendly_name, "utf-8"),
-                (RemoteConnection.multicast_group, RemoteConnection.multicast_port),
+                (RemoteConnection.multicast_group,
+                 RemoteConnection.multicast_port),
             )
             try:
                 # recieve a unicast response
@@ -275,7 +278,7 @@ class MoveSource(Iterator[Result[Move]]):
         return Success(next(self.__source))
 
     def __enter__(self) -> Generator[Result[Move], None, None]:
-        return iter(self) # TODO: fix this
+        return iter(self)  # TODO: fix this
 
     def __exit__(self, type, value, traceback) -> bool:
         match type:  # match the type of exception
@@ -315,7 +318,6 @@ class RemoteMoveSource(MoveSource):
             yield Move.from_str(self.player, move_str)
 
 
-
 class MoveGenerator:
     """A base class for all move generators.
 
@@ -341,8 +343,6 @@ class MoveGenerator:
                 yield next(black_iter)
 
 
-
-
 class MoveSink:
     """A base class for all move sinks.
 
@@ -363,10 +363,11 @@ class MoveSink:
             The move to send
         """
         raise NotImplementedError
-    
+
     def dump(self) -> None:
         """Performs any cleanup operations necessary to close the sink."""
         pass
+
 
 class ConsoleMoveSink(MoveSink):
     def __init__(self) -> None:
@@ -386,12 +387,12 @@ class RemoteMoveSink(MoveSink):
 
     def dump(self) -> None:
         self.conn.close()
-    
+
     def __del__(self):
         self.conn.close()
 
 
-class GraphicMoveSink(MoveSink): # TODO implement this
+class GraphicMoveSink(MoveSink):  # TODO implement this
     def __init__(self, player: int) -> None:
         raise NotImplementedError
 

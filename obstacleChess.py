@@ -1,5 +1,8 @@
 import sys
-import game, board, output, movehandler
+import game
+import board
+import output
+import movehandler
 from common import *
 
 
@@ -18,7 +21,8 @@ def main():
     with open(input_file_path, "r") as input_file:
         raw_file_contents = input_file.readlines()
     # Strip out comments and empty lines
-    comments_stripped = [line for line in raw_file_contents if not line.startswith("%")]
+    comments_stripped = [
+        line for line in raw_file_contents if not line.startswith("%")]
     file_contents = [
         line.replace("\n", "") for line in comments_stripped
     ]
@@ -28,28 +32,29 @@ def main():
         # If empty, error on first tile and return
         err_print(output.Error.ILLEGAL_BOARD % algebraic(0, 0))
         return
-        
+
     # Attempt to create a board
-    start_board = board.Board.from_strs(file_contents)# TODO: there cannot be spaces in the board, must error on a space (i.e. is an invalid piece)
+    # TODO: there cannot be spaces in the board, must error on a space (i.e. is an invalid piece)
+    start_board = board.Board.from_strs(file_contents)
     if isinstance(start_board, Failure):
         # If the board creation failed, notify and early return
         err_print(f"ERROR: {start_board.unwrap()}")
         return
     # Board creation passed, unwrap result
     start_board = start_board.unwrap()
-        
+
     # instantiate the game
     game_result = game.Game.from_board(start_board)
     if isinstance(game_result, Failure):
         err_print(f"ERROR: {game_result.unwrap()}")
         return
     current_game = game_result.unwrap()
-    
-    
+
     # open output file
     with open(output_file_path, "w") as output_file:
         # dump the board to the output file
         current_game.dump_board(stream=output_file)
+
 
 if __name__ == "__main__":
     main()

@@ -194,7 +194,8 @@ class Game:
                     pieces[node.contents.owner][node.contents.name] += 1
 
                     # calculate the number of promotions available to the player who owns this piece
-                    allowed_promotions = 8 - pieces[node.contents.owner]["pawn"]
+                    allowed_promotions = 8 - \
+                        pieces[node.contents.owner]["pawn"]
 
                     # we only need to check piece counts if the pice count has changed
                     match node.contents.name:
@@ -205,7 +206,8 @@ class Game:
                                 return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
 
                             # recalculate the number of promotions available to the player who owns this piece, now that we have discovered a pawn
-                            allowed_promotions = 8 - pieces[node.contents.owner]["pawn"]
+                            allowed_promotions = 8 - \
+                                pieces[node.contents.owner]["pawn"]
 
                             # to many of other pieces given number of promotions available
                             if allowed_promotions < promotions[node.contents.owner]:
@@ -311,6 +313,6 @@ class Game:
         for sink in self.sinks:
             sink.dump()
 
-    def dump_board(self, stream = sys.stdout):
+    def dump_board(self, stream=sys.stdout):
         """Dumps the board to a stream"""
         stream.write(self.board.canonical())

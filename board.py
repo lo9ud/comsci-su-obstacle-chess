@@ -614,16 +614,16 @@ class Board:
             # check that the row is the right length (9 becuse of dummy character)
             if len(row_list) < 9:
                 return Failure(Error.ILLEGAL_BOARD % algebraic(len(row_list), y))
-        
+
         state_result = BoardState.from_str(strings[8])
         if isinstance(state_result, Failure):
             return state_result
         state = state_result.unwrap()
-        
+
         # check that there are no more lines
         if len(strings) > 9:
-            return Failure(Error.ILLEGAL_STATUSLINE) # TODO: where to error?
-        
+            return Failure(Error.ILLEGAL_STATUSLINE)  # TODO: where to error?
+
         return Success(cls(board, state))
 
     @classmethod
@@ -720,7 +720,8 @@ class Board:
 
             case PlaceWall():
                 # Due to the way the PlaceWall move is constructed, we can assume that the move is valid if both the origin and destination are on the board, which is checked above
-                back, front = Wall.coords_to_walls(move.origin, move.destination)
+                back, front = Wall.coords_to_walls(
+                    move.origin, move.destination)
                 # check that the wall does not already exist
                 if (self[move.origin].walls & back == back) or (
                     self[move.destination].walls & front == front
@@ -832,7 +833,8 @@ class Board:
                 return Success(move)
 
             case PlaceWall():
-                back, front = Wall.coords_to_walls(move.origin, move.destination)
+                back, front = Wall.coords_to_walls(
+                    move.origin, move.destination)
                 new_board[move.origin].walls |= back
                 new_board[move.destination].walls |= front
                 return Success(move)
@@ -947,7 +949,7 @@ class Board:
             pass  # TODO: check for pawns
 
         # check for knights
-        element_add = lambda x, y: (x[0] + y[0], x[1] + y[1])
+        def element_add(x, y): return (x[0] + y[0], x[1] + y[1])
         knight_positions = list(
             map(
                 element_add,
