@@ -2,6 +2,7 @@ from board import Board, TrapdoorState, Wall
 from move import Move
 from output import *
 from common import *
+from movehandler import MoveSink, MoveSource
 
 
 class Game:
@@ -56,11 +57,23 @@ class Game:
         # The game's history, as a stack of (board, boardstate, move) tuples
         self.history: Game.__BoardStack = Game.__BoardStack()
 
+        # The game's move sinks
+        self.sinks: list[MoveSink] = []
+
+        # the games move sources
+        self.sources: list[MoveSource] = []
+
         # The current board
         # If no board is provided, instantiate a standard one
         if board is None:
             board = Board.standard_board().unwrap()
         self.board: Board = board
+
+    @classmethod
+    def from_board(cls, board: Board) -> Result["Game"]:
+        game = cls(board)
+        validation = game.validate()
+        return validation if isinstance(validation, Failure) else Success(game)
 
     def __iter__(self):
         return iter(self.history)
@@ -80,7 +93,7 @@ class Game:
         """
         return f"{self.board.canonical()}\n{self.board.state.canonical()}"
 
-    def validate(self) -> Result[None|str]:
+    def validate(self) -> Result[None | str]:
         """Validates a game.
 
         Uses data from the board and the curretn board state to validate the game.
@@ -100,10 +113,9 @@ class Game:
         walls = 0
 
         # the number of promoted pieces on the board
-        promoted = 0
-        last_promoted: dict[int, list[tuple[int,int]]] = {
-            Player.WHITE: [],
-            Player.BLACK: [],
+        promotions: dict[int, int] = {
+            Player.WHITE: 0,
+            Player.BLACK: 0,
         }
 
         # each players piece count
@@ -133,7 +145,7 @@ class Game:
                 if node.trapdoor in [
                     TrapdoorState.OPEN,
                     TrapdoorState.HIDDEN,
-                ]:  
+                ]:
                     trapdoors += 1
 
                     # trapdoor out of bounds
@@ -176,10 +188,13 @@ class Game:
                         return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
 
                 # pieces count
-                if node.contents is not None: 
+                if node.contents is not None:
                     # TODO: too many pieces, ie only 8 pawns cannot create a board with 9 promoted pieces
                     # update the piece count for the player this node belongs to
                     pieces[node.contents.owner][node.contents.name] += 1
+
+                    # calculate the number of promotions available to the player who owns this piece
+                    allowed_promotions = 8 - pieces[node.contents.owner]["pawn"]
 
                     # we only need to check piece counts if the pice count has changed
                     match node.contents.name:
@@ -189,79 +204,40 @@ class Game:
                             if pieces[node.contents.owner]["pawn"] > 8:
                                 return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
 
+                            # recalculate the number of promotions available to the player who owns this piece, now that we have discovered a pawn
+                            allowed_promotions = 8 - pieces[node.contents.owner]["pawn"]
+
+                            # to many of other pieces given number of promotions available
+                            if allowed_promotions < promotions[node.contents.owner]:
+                                # Too many promoted pieces
+                                return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
                             # pawns on the back rank
                             if y in [0, 7]:
                                 return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
 
-                        # knights
-                        case "knight":
-                            # too many knights, given the number of pawns
-                            if (
-                                pieces[node.contents.owner]["pawn"] == 8
-                                and pieces[node.contents.owner]["knight"] > 2
-                            ):
-                                return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
-                            # if there are more than 2 knights, they must be promoted
-                            elif pieces[node.contents.owner]["knight"] > 2: 
-                                promoted += 1
-                                last_promoted[node.contents.owner].append((x,y))
-
-                        # bishops
-                        case "bishop":
-                            # too many bishops, given the number of pawns
-                            if (
-                                pieces[node.contents.owner]["pawn"] == 8
-                                and pieces[node.contents.owner]["bishop"] > 2
-                            ):
-                                return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
-                            # if there are more than 2 bishops, they must be promoted
-                            elif pieces[node.contents.owner]["bishop"] > 2: 
-                                promoted += 1
-                                last_promoted[node.contents.owner].append((x,y))
-
-                        # rooks
-                        case "rook":
-                            # too many rooks, given the number of pawns
-                            if (
-                                pieces[node.contents.owner]["pawn"] == 8
-                                and pieces[node.contents.owner]["rook"] > 2
-                            ):
-                                return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
-                            # if there are more than 2 rooks, they must be promoted
-                            elif pieces[node.contents.owner]["rook"] > 2: 
-                                promoted += 1
-                                last_promoted[node.contents.owner].append((x,y))
+                        # rooks, bishops and knights
+                        case "rook" | "bishop" | "knight" as piece:
+                            # update promotions
+                            if pieces[node.contents.owner][piece] > 2:
+                                # if there are more than 2 rooks, there there must have been a promotion
+                                promotions[node.contents.owner] += 1
 
                         # queens
                         case "queen":
-                            # too many queens, given the number of pawns
-                            if (
-                                pieces[node.contents.owner]["pawn"] == 8
-                                and pieces[node.contents.owner]["queen"] > 1
-                            ):
-                                return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
-                            # if there is more than 1 queen, they must be promoted
-                            elif pieces[node.contents.owner]["queen"] > 1: 
-                                promoted += 1
-                                last_promoted[node.contents.owner].append((x,y))
-                        
+                            # update promotions
+                            if pieces[node.contents.owner]["queen"] > 1:
+                                # if there are more than 2 rooks, there there must have been a promotion
+                                promotions[node.contents.owner] += 1
+
                         # kings
                         case "king":
                             # too many kings
                             if pieces[node.contents.owner]["king"] > 1:
                                 return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
 
-        # too many promoted pieces
-        for player in pieces:
-            # calculate how many promotions are allowed for this player
-            allowed_promotions = 8 - pieces[player]["pawn"]
-            # if this player has more promoted pieces than missing pawns
-            if allowed_promotions > promoted:
-                # find the posiion of the last legally promoted piece
-                err_pos = last_promoted[player][allowed_promotions]
-                # return the error
-                return Failure(Error.ILLEGAL_BOARD % algebraic(*err_pos))
-        
+                    # too many promotions
+                    if promotions[node.contents.owner] > allowed_promotions:
+                        return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
         # too many pieces in total
         for player in pieces:
             if sum(pieces[player].values()) > 16:
@@ -272,7 +248,7 @@ class Game:
                         if node.contents is not None and node.contents.owner == player:
                             last = (x, y)
                 if last is not None:
-                    return Failure(Error.ILLEGAL_BOARD % algebraic(7,7))
+                    return Failure(Error.ILLEGAL_BOARD % algebraic(7, 7))
 
         if pieces[Player.WHITE]["king"] < 1 or pieces[Player.BLACK]["king"] < 1:
             return Failure(Error.ILLEGAL_BOARD % algebraic(7, 7))
@@ -280,14 +256,15 @@ class Game:
         # number of walls in reserve too many
         if walls + sum(self.board.state.walls.values()) > 6:
             return Failure(Error.ILLEGAL_STATUSLINE)
-        
+
         # Validation succeeded, return Success
         return Success(None)
 
-    def set_board(self, new_board):
+    def set_board(self, new_board) -> Result[Board]:
         self.board = new_board
+        return Success(new_board)
 
-    def play_move(self, move_str: str) -> Result[None|Error]:
+    def play_move(self, move_str: str) -> Result[Board]:
         """Plays the given move.
 
         Parameters
@@ -296,12 +273,12 @@ class Game:
             The move to play.
         """
         # Create the move from the provided string
+        move_result = Move.from_str(self.board.state.player, move_str)
+        if isinstance(move_result, Failure):
+            return Failure(Error.ILLEGAL_MOVE % move_str)
+        move = move_result.unwrap()
         play_result = (
-            Move.from_str(self.board.state.player, move_str)
-            .and_then(
-                # Push the new move and the old board onto the history
-                lambda move: self.history.push(move, self.board)
-            )
+            self.history.push(move, self.board)
             .and_then(
                 # Apply the move to the board
                 lambda board_move: self.board.apply_move(board_move[1])
@@ -310,5 +287,30 @@ class Game:
                 # Set the current board to the new one
                 lambda new_board: self.set_board(new_board)
             )
-        )  # If any of these fail, the Failure passes through and is returned
+        )  # If any of these fail, the Failure passes through
+
+        # If the move was successful, send the move to the outputs
+        if isinstance(play_result, Success):
+            for sink in self.sinks:
+                sink.send(move)
+        # Return the result of the move
         return play_result
+
+    def register_output(self, output: MoveSink) -> None:
+        """Registers an output to send board updates to.
+
+        Parameters
+        ----------
+        output : Output
+            The output to register.
+        """
+        self.sinks.append(output)
+
+    def dump_output(self):
+        """Dumps all output to the registered outputs."""
+        for sink in self.sinks:
+            sink.dump()
+
+    def dump_board(self, stream = sys.stdout):
+        """Dumps the board to a stream"""
+        stream.write(self.board.canonical())

@@ -357,8 +357,7 @@ class BoardState:
         # check player is valid
         if isinstance(player_result, Failure):
             return Failure(Error.ILLEGAL_STATUSLINE)
-        else:
-            player = player_result.unwrap()
+        player = player_result.unwrap()
 
         walls = tuple(map(int, blocks[1:3]))
         # check walls are in range
@@ -370,12 +369,12 @@ class BoardState:
         enpassant_str = blocks[7]
         enpassant = None if (enpassant_str == "-") else coords(enpassant_str)
         # check target square is on the board
-        if enpassant is not None and 0 <= enpassant[0] <= 7 and 0 <= enpassant[1] <= 7:
+        if enpassant is not None and not (0 <= enpassant[0] <= 7 and 0 <= enpassant[1] <= 7):
             return Failure(Error.ILLEGAL_STATUSLINE)
 
         clock = int(blocks[8])
         # check clock is in range
-        if not (0 <= clock <= 100):
+        if not (0 <= clock):
             return Failure(Error.ILLEGAL_STATUSLINE)
 
         return Success(cls(player, walls, castling, enpassant, clock))
@@ -472,7 +471,7 @@ class Board:
         for row in self.__nodes:
             row_string = "".join(node.canonical() for node in row)
             row_strings.append(row_string)
-        return "\n".join(row_strings)
+        return "\n".join(row_strings + [self.state.canonical()])
 
     @staticmethod
     def on_board(position: tuple[int, int]):
@@ -504,7 +503,7 @@ class Board:
         ]
 
     @classmethod
-    def from_strs(cls, strings: list[str], state: BoardState) -> Result["Board"]:
+    def from_strs(cls, strings: list[str]) -> Result["Board"]:
         """Returns a board that is in the state described by the given string ,or list of strings.
 
         This string should not contain any comments, or a status line.
@@ -537,7 +536,7 @@ class Board:
 
         # transform the board lines into a 3D array of characters, such that each coordinate holds a list containing the specifier for that node and then the modifiers for that node
         lines: list[list[list[str]]] = []
-        for line in strings:
+        for line in strings[:8]:
             mod_list: list[str] = []
             new_line: list[list[str]] = []
             # append a dummy character to absorb any trailing modifiers
@@ -615,6 +614,16 @@ class Board:
             # check that the row is the right length (9 becuse of dummy character)
             if len(row_list) < 9:
                 return Failure(Error.ILLEGAL_BOARD % algebraic(len(row_list), y))
+        
+        state_result = BoardState.from_str(strings[8])
+        if isinstance(state_result, Failure):
+            return state_result
+        state = state_result.unwrap()
+        
+        # check that there are no more lines
+        if len(strings) > 9:
+            return Failure(Error.ILLEGAL_STATUSLINE) # TODO: where to error?
+        
         return Success(cls(board, state))
 
     @classmethod
@@ -629,8 +638,9 @@ class Board:
             "........",
             "PPPPPPPP",
             "RNBQKBNR",  # white pieces
+            BoardState.standard_state().canonical(),  # standard state
         ]
-        return cls.from_strs(standard_board_str, BoardState.standard_state())
+        return cls.from_strs(standard_board_str)
 
     def validate_move(self, move: Move) -> Result[Move]:
         """Validates the supplied move against this board, returning a Failure if the move is invalid, and a Success otherwise.

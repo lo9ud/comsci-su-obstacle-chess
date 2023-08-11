@@ -1,11 +1,11 @@
 import sys
-import game, board, output
+import game, board, output, movehandler
 from common import *
 
 
 def main():
-    if len(sys.argv) <= 2:  # too few arguments
-        return  # TODO: What do i do if there are no arguments/incorrect arguments?
+    # if len(sys.argv) <= 2:  # too few arguments
+    #     return  # TODO: What do i do if there are no arguments/incorrect arguments?
 
     # Unpack input_, output_ and game_ file paths
     # using the list unpacking operator ensures this will succeed regardless of game_ path existing
@@ -28,39 +28,28 @@ def main():
         # If empty, error on first tile and return
         err_print(output.Error.ILLEGAL_BOARD % algebraic(0, 0))
         return
-    # Attempt to create a boardstate
-    start_state = board.BoardState.from_str(file_contents[-1])
-    if isinstance(start_state, Failure):
-        # If the state creation failed, notify and early return
-        err_print(f"ERROR: {output.Error.ILLEGAL_STATUSLINE}")
-        return
-    # State creation passed, unwrap result
-    start_state = start_state.unwrap()
-
+        
     # Attempt to create a board
-    start_board = board.Board.from_strs(file_contents[:-1], start_state)
+    start_board = board.Board.from_strs(file_contents)# TODO: there cannot be spaces in the board, must error on a space (i.e. is an invalid piece)
     if isinstance(start_board, Failure):
         # If the board creation failed, notify and early return
         err_print(f"ERROR: {start_board.unwrap()}")
         return
     # Board creation passed, unwrap result
     start_board = start_board.unwrap()
-
+        
     # instantiate the game
-    current_game = game.Game(start_board)
-
-    # validate the board
-    validation_result = current_game.validate()
-    if isinstance(validation_result, Failure):
-        # Validation failed, print error to screen and early return
-        err_print(f"ERROR: {validation_result.unwrap()}")
+    game_result = game.Game.from_board(start_board)
+    if isinstance(game_result, Failure):
+        err_print(f"ERROR: {game_result.unwrap()}")
         return
-
-    # create the output file
+    current_game = game_result.unwrap()
+    
+    
+    # open output file
     with open(output_file_path, "w") as output_file:
-        # write the game state to the output file
-        output_file.write(current_game.canonical())
-
+        # dump the board to the output file
+        current_game.dump_board(stream=output_file)
 
 if __name__ == "__main__":
     main()
