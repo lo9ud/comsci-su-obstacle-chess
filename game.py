@@ -1,6 +1,5 @@
 from board import Board, TrapdoorState, Wall
 from move import Move
-from output import *
 from common import *
 from movehandler import MoveSink, MoveSource
 
@@ -22,7 +21,7 @@ class Game:
 
         def push(self, move: Move, board: Board) -> Result[tuple[Board, Move]]:
             self.__stack.append((board, move))
-            return Success((move, board))
+            return Success((board, move))
 
         def pop(self) -> tuple[Board, Move]:
             return self.__stack.pop()
@@ -70,7 +69,7 @@ class Game:
         self.board: Board = board
 
     @classmethod
-    def from_board(cls, board: Board) -> Result["Game"]:
+    def from_board(cls, board: Board) -> Result[Self]:
         game = cls(board)
         validation = game.validate()
         return validation if isinstance(validation, Failure) else Success(game)
@@ -113,7 +112,7 @@ class Game:
         walls = 0
 
         # the number of promoted pieces on the board
-        promotions: dict[int, int] = {
+        promotions: dict[Player, int] = {
             Player.WHITE: 0,
             Player.BLACK: 0,
         }
@@ -184,12 +183,10 @@ class Game:
                             return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
                     # too many walls on board and in reserve
                     if walls > 6:
-                        # TODO: Board or statusline error?
                         return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
 
                 # pieces count
                 if node.contents is not None:
-                    # TODO: too many pieces, ie only 8 pawns cannot create a board with 9 promoted pieces
                     # update the piece count for the player this node belongs to
                     pieces[node.contents.owner][node.contents.name] += 1
 
@@ -253,8 +250,8 @@ class Game:
         if pieces[Player.WHITE]["king"] < 1 or pieces[Player.BLACK]["king"] < 1:
             return Failure(Error.ILLEGAL_BOARD % algebraic(7, 7))
 
-        # number of walls in reserve too many
-        if walls + sum(self.board.state.walls.values()) > 6:
+        # number of walls in existence is not six
+        if walls + sum(self.board.state.walls.values()) != 6:
             return Failure(Error.ILLEGAL_STATUSLINE)
 
         # Validation succeeded, return Success
@@ -311,6 +308,6 @@ class Game:
         for sink in self.sinks:
             sink.dump()
 
-    def dump_board(self, stream = sys.stdout):
+    def dump_board(self, stream=sys.stdout):
         """Dumps the board to a stream"""
         stream.write(self.board.canonical())

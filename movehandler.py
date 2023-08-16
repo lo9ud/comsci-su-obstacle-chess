@@ -28,9 +28,9 @@ class RemoteConnection:
     @classmethod
     def as_host(
         cls, friendly_name=socket.gethostname(), listen_timeout=120
-    ) -> Result["RemoteConnection"]:
+    ) -> Result[Self]:
         """Open up to search requests, and multicast a search request to the group to discover other players.
-
+        
         Upon recieving a search request, the host will send a unicast response to the sender, and at the end of the timeout, will return a RemoteConnection object to the first client to connect.
 
         listen_timeout: The number of seconds to listen for responses. If 0, will listen forever. This can be overridden by the user with Ctrl+C. Thsi has limited resolution, so may not be exact.
@@ -137,7 +137,7 @@ class RemoteConnection:
     @classmethod
     def as_slave(
         cls, friendly_name=socket.gethostname(), broadcast_timeout=120
-    ) -> Result["RemoteConnection"]:
+    ) -> Result[Self]:
         """Attempt to connect to a host."""
 
         # initialize the multicast sender
@@ -260,7 +260,7 @@ class MoveSource(Iterator[Result[Move]]):
     i.e.) One player could be a human, while the other is an AI, or one player could be local, while the other is a remote player.
     """
 
-    def __init__(self, player: int) -> None:
+    def __init__(self, player: Player) -> None:
         self.__source: Iterator[Move]
         self.player = player
         self.__closed = False
@@ -275,7 +275,7 @@ class MoveSource(Iterator[Result[Move]]):
         return Success(next(self.__source))
 
     def __enter__(self) -> Generator[Result[Move], None, None]:
-        return iter(self) # TODO: fix this
+        return iter(self)  # TODO: fix this
 
     def __exit__(self, type, value, traceback) -> bool:
         match type:  # match the type of exception
@@ -288,7 +288,7 @@ class MoveSource(Iterator[Result[Move]]):
 
 
 class ConsoleMoveSource(MoveSource):
-    def __init__(self, player: int) -> None:
+    def __init__(self, player: Player) -> None:
         super().__init__(player)
 
     def __iter__(self) -> Iterator[Result[Move]]:
@@ -313,7 +313,6 @@ class RemoteMoveSource(MoveSource):
         while not self.__closed:
             move_str = self.connection.recv()
             yield Move.from_str(self.player, move_str)
-
 
 
 class MoveGenerator:
@@ -341,8 +340,6 @@ class MoveGenerator:
                 yield next(black_iter)
 
 
-
-
 class MoveSink:
     """A base class for all move sinks.
 
@@ -363,10 +360,11 @@ class MoveSink:
             The move to send
         """
         raise NotImplementedError
-    
+
     def dump(self) -> None:
         """Performs any cleanup operations necessary to close the sink."""
         pass
+
 
 class ConsoleMoveSink(MoveSink):
     def __init__(self) -> None:
@@ -386,12 +384,12 @@ class RemoteMoveSink(MoveSink):
 
     def dump(self) -> None:
         self.conn.close()
-    
+
     def __del__(self):
         self.conn.close()
 
 
-class GraphicMoveSink(MoveSink): # TODO implement this
+class GraphicMoveSink(MoveSink):  # TODO implement this
     def __init__(self, player: int) -> None:
         raise NotImplementedError
 

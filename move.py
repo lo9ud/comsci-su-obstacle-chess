@@ -1,5 +1,6 @@
 from common import *
 from piece import Piece
+from board import Wall
 
 
 class Move:
@@ -9,50 +10,73 @@ class Move:
     """
 
     def __init__(
-        self, player: int, origin: tuple[int, int], destination: tuple[int, int]
+        self, player: Player, origin: tuple[int, int], destination: tuple[int, int]
     ) -> None:
         self.player = player
         self.origin = origin
         self.destination = destination
-        self.delta : tuple[int,int] = tuple(map(lambda x: abs(x[1] - x[0]), zip(origin, destination)))
+        self.delta: tuple[int, int] = tuple(
+            map(lambda x: abs(x[1] - x[0]), zip(origin, destination))
+        )
 
     @classmethod
-    def from_str(cls, player: int, string:str) -> Result["Move"]:
+    def from_str(cls, player: Player, string: str) -> Result[Self]:
         # TODO: wall transformation from direction-position to position-position
         # TODO: pawn promotion transformation
         match list(string):
             # standard move
-            case [x1, y1,'-', x2, y2] if x1.isalpha() and y1.isdigit() and x2.isalpha() and y2.isdigit():
-                return Success(Move(player, coords(x1+y1), coords(x2+y2)))
+            case [
+                x1,
+                y1,
+                "-",
+                x2,
+                y2,
+            ] if x1.isalpha() and y1.isdigit() and x2.isalpha() and y2.isdigit():
+                return Success(Move(player, coords(x1 + y1), coords(x2 + y2)))
             # pawn promotion
-            case [x1, y1, '-', x2, y2, '=', p] if x1.isalpha() and y1.isdigit() and x2.isalpha() and y2.isdigit() and p.isalpha():
-                return Success(Promotion(player, coords(x1+y1), coords(x2+y2), Piece.from_str(p).unwrap().__class__)) # TODO: clean this up
+            case [
+                x1,
+                y1,
+                "-",
+                x2,
+                y2,
+                "=",
+                p,
+            ] if x1.isalpha() and y1.isdigit() and x2.isalpha() and y2.isdigit() and p.isalpha():
+                return Success(
+                    Promotion(
+                        player,
+                        coords(x1 + y1),
+                        coords(x2 + y2),
+                        Piece.from_str(p).unwrap().__class__,
+                    )
+                )  # TODO: clean this up
             # castling
-            case ["0","-","0", *queen]:
-                if queen == ["-","0"]:
+            case ["0", "-", "0", *queen]:
+                if queen == ["-", "0"]:
                     return Success(QueenCastle(player))
                 return Success(KingCastle(player))
             # special moves
             # trapdoor
-            case ['D', x, y] if x.isalpha() and y.isdigit():
-                return Success(PlaceTrapdoor(player, coords(x+y)))
+            case ["D", x, y] if x.isalpha() and y.isdigit():
+                return Success(PlaceTrapdoor(player, coords(x + y)))
             # mine
-            case ['M', x, y] if x.isalpha() and y.isdigit():
-                return Success(PlaceMine(player, coords(x+y)))
+            case ["M", x, y] if x.isalpha() and y.isdigit():
+                return Success(PlaceMine(player, coords(x + y)))
             # wall
-            case [("|"|"_" as wall), x, y]:
+            case [("|" | "_" as wall), x, y]:
                 # west wall
                 if wall == "|":
-                    _from = coords(x+y)
-                    _to = coords(x+y[0]+str(int(y[1])+1))
-                    _to = _to[0]-1,_to[1]
+                    _from = coords(x + y)
+                    _to = coords(x + y[0] + str(int(y[1]) + 1))
+                    _to = _to[0] - 1, _to[1]
                 # south wall
-                else: # wall == "_"
-                    _from = coords(x+y)
-                    _to = coords(x+y)
-                    _to = _to[0],_to[1]+1
+                else:  # wall == "_"
+                    _from = coords(x + y)
+                    _to = coords(x + y)
+                    _to = _to[0], _to[1] + 1
                 return Success(PlaceWall(player, _from, _to))
-        raise NotImplementedError 
+        return Failure()
 
     def canonical(self) -> str:
         """Returns the move in canonical notation.
@@ -71,16 +95,24 @@ class PlaceWall(Move):
     The wall is placed between the two coordinates, which must be adjacent and not diagonal.
     """
 
-    def __init__(self, player:int, origin: tuple[int, int], destination: tuple[int, int]) -> None:
+    def __init__(
+        self, player: Player, origin: tuple[int, int], destination: tuple[int, int]
+    ) -> None:
         super().__init__(player, origin, destination)
 
     def canonical(self) -> str:
         # TODO: Implement the fact the only south/west walls are allowed
-        raise NotImplementedError("Cannot convert wall placement to canonical notation")
+        match Wall.get_wall_direction(self.origin, self.destination):
+            case Wall.SOUTH:
+                return f"_{algebraic(*self.origin)}"
+            case Wall.WEST:
+                return f"|{algebraic(*self.origin)}"
+            case _:
+                raise ValueError
 
 
 class PlaceMine(Move):
-    def __init__(self, player:int, origin: tuple[int, int]) -> None:
+    def __init__(self, player: Player, origin: tuple[int, int]) -> None:
         super().__init__(player, origin, origin)
 
     def canonical(self) -> str:
@@ -88,7 +120,7 @@ class PlaceMine(Move):
 
 
 class PlaceTrapdoor(Move):
-    def __init__(self, player: int, origin: tuple[int, int]) -> None:
+    def __init__(self, player: Player, origin: tuple[int, int]) -> None:
         super().__init__(player, origin, origin)
 
     def canonical(self) -> str:
@@ -102,7 +134,11 @@ class Promotion(Move):
     """
 
     def __init__(
-        self, player:int, origin: tuple[int, int], destination: tuple[int, int], promotion: type[Piece]
+        self,
+        player: Player,
+        origin: tuple[int, int],
+        destination: tuple[int, int],
+        promotion: type[Piece],
     ) -> None:
         super().__init__(player, origin, destination)
         self.promotion = promotion
@@ -112,13 +148,16 @@ class Promotion(Move):
 
 
 class Castle(Move):  # TODO: Implement castling
-    """Represents castling. 
-    
-    This class holds the common logic for castling, and the subclasses implement the specifics.
-    
-    Only the information about the kings movement is stored, the rook's movement is inferred from the king's, but can be calculated using the rook_move method."""
+    """Represents castling.
 
-    def __init__(self, player:int, destination: tuple[int, int]) -> None:
+    This class holds the common logic for castling, and the subclasses implement the specifics.
+
+    Only the information about the kings movement is stored, the rook's movement is inferred from the king's, but can be calculated using the rook_move method.
+
+    This class should not be manually instantiated.
+    """
+
+    def __init__(self, player: Player, destination: tuple[int, int]) -> None:
         match player:
             case Player.WHITE:
                 origin = (7, 4)
@@ -127,7 +166,7 @@ class Castle(Move):  # TODO: Implement castling
             case _:
                 origin = (0, 0)
         super().__init__(player, origin, destination)
-        
+
     def rook_move(self) -> Move:
         """Generates the move of the rook in a castling move.
 
@@ -140,19 +179,15 @@ class Castle(Move):  # TODO: Implement castling
         """
         # if the king is castling to the right, the rook is on the rightmost column, otherwise it is on the leftmost column, and its row is the same as the king's
         rook_origin = (7 if self.destination[0] == 6 else 0, self.origin[1])
-        
+
         # if the king is castling to the right, the rook moves to the left of the king, otherwise it moves to the right of the king, and its row is the same as the king's
         rook_destination = (5 if self.destination[0] == 6 else 0, self.destination[1])
-        
-        return Move(
-            self.player, 
-            rook_origin, 
-            rook_destination
-            )
+
+        return Move(self.player, rook_origin, rook_destination)
 
 
 class QueenCastle(Castle):
-    def __init__(self, player: int) -> None:
+    def __init__(self, player: Player) -> None:
         match player:
             case Player.WHITE:
                 destination = (7, 6)
@@ -164,7 +199,7 @@ class QueenCastle(Castle):
 
 
 class KingCastle(Castle):
-    def __init__(self, player: int) -> None:
+    def __init__(self, player: Player) -> None:
         match player:
             case Player.WHITE:
                 destination = (7, 2)

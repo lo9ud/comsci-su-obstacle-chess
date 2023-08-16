@@ -1,5 +1,8 @@
 from common import *
-from typing import Any, Callable
+from typing import Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:  # allows typechecking while preventing circular imports
+    from move import Move
 
 
 class PieceDelta:
@@ -22,11 +25,12 @@ class Piece:
     Provides methods for representing the piece's state, and provides methods for manipulating it.
     """
 
-    delta = PieceDelta(lambda  _: False)
+    delta = PieceDelta(lambda _: False)
     """The movement of the piece, as a PieceDelta with containment implemented."""
     jumps = False
     """Whether the piece can jump over other pieces and walls."""
-    def __init__(self, owner: int) -> None:
+
+    def __init__(self, owner: Player) -> None:
         self.owner = owner
         """The player this piece belongs to"""
         self.name = self.__class__.__name__.lower()
@@ -59,9 +63,9 @@ class Piece:
             Whether the piece can move to the given location.
         """
         return move in self.delta
-    
-    @staticmethod
-    def from_str(string: str) -> Result["Piece"]:
+
+    @classmethod
+    def from_str(cls, string: str) -> Result[Self]:
         """Returns a piece from a string, using standard algebraic notation.
 
         Parameters
@@ -115,6 +119,7 @@ class Knight(Piece):
         or move.delta == [2, 1]  # Standard move
     )
     jumps = True
+
     def canonical(self) -> str:
         return "n" if self.owner == Player.BLACK else "N"
 
@@ -150,12 +155,13 @@ class Rook(Piece):
 
 class Queen(Piece):
     """A queen."""
+
     delta = PieceDelta(
-        lambda move:
-            move.delta[0] == move.delta[1]  # Diagonal move
-            or (move.delta[0] == 0 and move.delta[1] > 0)  # Standard (vertical) move
-            or (move.delta[1] == 0 and move.delta[0] > 0)  # Standard (horizontal) move
+        lambda move: move.delta[0] == move.delta[1]  # Diagonal move
+        or (move.delta[0] == 0 and move.delta[1] > 0)  # Standard (vertical) move
+        or (move.delta[1] == 0 and move.delta[0] > 0)  # Standard (horizontal) move
     )
+
     def canonical(self) -> str:
         return "q" if self.owner == Player.BLACK else "Q"
 
@@ -164,9 +170,11 @@ class Queen(Piece):
 
 class King(Piece):
     """A king."""
+
     delta = PieceDelta(
         lambda move: move.delta[0] <= 1 and move.delta[1] <= 1  # Standard move
     )
+
     def canonical(self) -> str:
         return "k" if self.owner == Player.BLACK else "K"
 

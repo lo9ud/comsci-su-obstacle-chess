@@ -1,7 +1,8 @@
-from typing import Iterator, TextIO
+"""Classes for representing the board state and the board itself."""
+
+from typing import Iterator, Self
 from piece import Piece, Pawn, Knight, Bishop, Rook, Queen, King
 from common import *
-from output import *
 from move import (
     Move,
     PlaceMine,
@@ -15,163 +16,17 @@ from move import (
 from copy import deepcopy
 import re
 
-
-class TrapdoorState:
-    """The possible states of a trapdoor as an "enum"."""
-
-    NONE = 1
-    """No trapdoor"""
-    HIDDEN = 2
-    """Trapdoor present (Hidden)"""
-    OPEN = 3
-    """Trapdoor present (Open)"""
-
-    @classmethod
-    def hide(cls):
-        return cls.HIDDEN
-
-    @classmethod
-    def open(cls):
-        return cls.OPEN
-
-    @classmethod
-    def none(cls):
-        return cls.NONE
-
-
-class Wall:  # TODO: confirm  anything using this now conforms to new behaviour
-    """A bitmask class for walls
-
-    By using bitwise operators membership for any of these can be easily checked.
-    """
-
-    NONE = 0b0000
-    """No walls"""
-    NORTH = 0b0001
-    """North wall"""
-    SOUTH = 0b0010
-    """South wall"""
-    EAST = 0b0100
-    """East wall"""
-    WEST = 0b1000
-    """West wall"""
-
-    @staticmethod
-    def to_str(walls: int) -> str:
-        """Constructs a string of which walls are contained within a wall flag
-
-        Parameters
-        ----------
-        walls : int
-            The wall flag to check
-
-        Returns
-        -------
-        str
-            The constructed string
-        """
-        retval = []
-        if walls & Wall.NORTH:
-            retval.append("NORTH")
-        if walls & Wall.SOUTH:
-            retval.append("SOUTH")
-        if walls & Wall.EAST:
-            retval.append("EAST")
-        if walls & Wall.WEST:
-            retval.append("WEST")
-        return " ".join(retval) or "NONE"
-
-    @staticmethod
-    def get_wall_direction(
-        _from: tuple[int, int], _to: tuple[int, int]
-    ) -> tuple[int, int]:
-        """Returns the types of wall that would block motion between _from and _to
-
-        Returns a tuple of the walls that _from would have to block the motion and the walls that _to would need to block the motion
-
-        Parameters
-        ----------
-        _from : tuple[int, int]
-            The position a piece is coming from
-        _to : tuple[int,int]
-            THe position a piece is going to
-
-        Returns
-        -------
-        tuple[int, int]
-            The correct wall code for _from and for _to
-        """
-        x1, y1, x2, y2 = *_from, *_to
-        match (x1 == x2, y1 == y2):
-            # East-West movement
-            case (True, False):
-                return (Wall.SOUTH, Wall.NORTH) if y2 > y1 else (Wall.NORTH, Wall.SOUTH)
-            # North-South movement
-            case (False, True):
-                return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
-            # Diagonal movement
-            case (True, True):
-                from_walls = 0b0000
-                to_walls = 0b0000
-                if y1 > y2:  # Going Northwards
-                    from_walls &= Wall.NORTH
-                    to_walls &= Wall.SOUTH
-                    if x1 > x2:
-                        from_walls &= Wall.WEST
-                        to_walls &= Wall.EAST
-                    else:
-                        from_walls &= Wall.EAST
-                        to_walls &= Wall.WEST
-                else:  # Going Southwards
-                    from_walls &= Wall.SOUTH
-                    to_walls &= Wall.NORTH
-                    if x1 > x2:
-                        from_walls &= Wall.WEST
-                        to_walls &= Wall.EAST
-                    else:
-                        from_walls &= Wall.EAST
-                        to_walls &= Wall.WEST
-                return (from_walls, to_walls)
-            case _:
-                return (Wall.NONE, Wall.NONE)
-
-    @staticmethod
-    def coords_to_walls(
-        _from: tuple[int, int], _to: tuple[int, int]
-    ) -> tuple[int, int]:
-        """Transforms two coordinates into a wall flag
-
-        Parameters
-        ----------
-        _from : tuple[int,int]
-            The "back" of the wall
-        _to : tuple[int, int]
-            The "front" of the wall
-
-        Returns
-        -------
-        int
-            The wall flag
-        """
-        x1, y1, x2, y2 = *_from, *_to
-        match (x1 == x2, y1 == y2):
-            # East-West movement
-            case (True, False):
-                return (Wall.SOUTH, Wall.NORTH) if y2 > y1 else (Wall.NORTH, Wall.SOUTH)
-            # North-South movement
-            case (False, True):
-                return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
-            case _:
-                return (Wall.NONE, Wall.NONE)
-
-
 class BoardNode:
     """Logical representation of a node on the board.
 
     Maintains info on mines, trapdoors and pieces on the node.
+    
+    Provides a `canonical()` method for transforming this node into a string that describes it, in the format required by the spec.
     """
 
-    def __init__(self, contents: Piece | None, mined: bool, trapdoor: int) -> None:
+    def __init__(
+        self, contents: Piece | None, mined: bool, trapdoor: TrapdoorState
+    ) -> None:
         self.contents = contents
         """The contents of a tile (`None` or `Piece`)"""
         self.mined = mined
@@ -188,24 +43,36 @@ class BoardNode:
         return f"Node({self.contents if self.contents is None else self.contents.canonical()})"
 
     def canonical(self) -> str:
+        """Return a string representation of the node in canonical form.
+
+        Returns
+        -------
+        str
+            The canonical representation of the node.
+        """
         node_str = ""
         # If there is a piece on the node, add it to the string
         match self.contents:
             case None:
+                # match the trapdoor and mine states
                 match (self.trapdoor, self.mined):
+                    # hidden trapdoor but no mine
                     case (TrapdoorState.HIDDEN, False):
                         node_str += "D"
+                    # open trapdoor but no mine
                     case (TrapdoorState.OPEN, False):
                         node_str += "O"
+                    # hidden trapdoor and a mine
                     case (TrapdoorState.HIDDEN, True):
                         node_str += "X"
+                    # no trapdoor and a mine
                     case (TrapdoorState.NONE, True):
                         node_str += "M"
+                    # no trapdoor and no mine
                     case (TrapdoorState.NONE, False):
                         node_str += "."
-                    case _:
-                        raise ValueError(f"Invalid node state: {self}")
             case _:
+                # if there is a piece, add it to the string
                 node_str += self.contents.canonical()
         # prepend walls to the string
         if self.walls & Wall.SOUTH:
@@ -213,10 +80,11 @@ class BoardNode:
         if self.walls & Wall.WEST:
             node_str = f"|{node_str}"
 
+        # return the string
         return node_str
 
     @classmethod
-    def from_str(cls, char: str) -> Result["BoardNode"]:
+    def from_str(cls, char: str) -> Result[Self]:
         """Creates a BoardNode from a character.
 
         Parameters
@@ -231,30 +99,30 @@ class BoardNode:
         """
         # Empty node
         if char[0] == ".":
-            return Success(BoardNode(None, False, TrapdoorState.none()))
+            return Success(BoardNode(None, False, TrapdoorState.NONE))
 
         # a mine or trapdoor
         elif char[0] in ["D", "O", "M", "X"]:
             match char:
                 # hidden trapdoor
                 case "D":
-                    return Success(BoardNode(None, False, TrapdoorState.hide()))
+                    return Success(BoardNode(None, False, TrapdoorState.HIDDEN))
                 # open trapdoor
                 case "O":
-                    return Success(BoardNode(None, False, TrapdoorState.open()))
+                    return Success(BoardNode(None, False, TrapdoorState.OPEN))
                 # mine
                 case "M":
-                    return Success(BoardNode(None, True, TrapdoorState.none()))
+                    return Success(BoardNode(None, True, TrapdoorState.NONE))
                 # hidden trapdoor and a mine
                 case "X":
-                    return Success(BoardNode(None, True, TrapdoorState.hide()))
+                    return Success(BoardNode(None, True, TrapdoorState.HIDDEN))
 
         # a piece
         # This is evaluated last, so that isupper and islower can be used to check for pieces and dont get caught on mines/trapdoors
 
         new_piece = Piece.from_str(char[0])
         if isinstance(new_piece, Success):
-            return Success(BoardNode(new_piece.unwrap(), False, TrapdoorState.none()))
+            return Success(BoardNode(new_piece.unwrap(), False, TrapdoorState.NONE))
 
         # If the character could not be converted into a piece, return a Failure.
         return Failure()
@@ -272,7 +140,7 @@ class BoardState:
 
     def __init__(
         self,
-        player: int,
+        player: Player,
         walls: tuple[int, int],
         castling: tuple[bool, bool, bool, bool],
         enpassant: tuple[int, int] | None,
@@ -310,19 +178,24 @@ class BoardState:
         """
         return " ".join(
             [
+                # the current player
                 Player.canonical(self.player),
+                # the number of walls for each player
                 str(self.walls[Player.WHITE]),
                 str(self.walls[Player.BLACK]),
+                # the castling rights for each player
                 "+" if self.castling[Player.WHITE]["king"] else "-",
                 "+" if self.castling[Player.WHITE]["queen"] else "-",
                 "+" if self.castling[Player.BLACK]["king"] else "-",
                 "+" if self.castling[Player.BLACK]["queen"] else "-",
+                # the enpassant target
                 algebraic(*self.enpassant) if self.enpassant else "-",
+                # the halfmove clock
                 str(self.clock),
             ]
         )
 
-    def copy(self):
+    def copy(self) -> Self:
         """Creates a copy of the board state.
 
         Returns
@@ -333,8 +206,11 @@ class BoardState:
         return deepcopy(self)
 
     @classmethod
-    def from_str(cls, string: str) -> Result["BoardState"]:
+    def from_str(cls, string: str) -> Result[Self]:
         """Creates a BoardState from a string.
+
+        The string should match the following format:
+            `(w|b) ([0-3] ){2} ((\\+|-) ){4}(-|[a-g][1-8]) [1-9]\\d*`
 
         Parameters
         ----------
@@ -348,41 +224,43 @@ class BoardState:
         BoardState
             The created state.
         """
-        if not re.match(r"(w|b)\s\d\s\d\s((\+|-)\s){4}(-|\w\d)\s\d+", string):
+        # check that the string is valid, and conforms to the required format
+        # this guarantees that any later operations will not fail
+        # matches as follows:
+        #   - `(w|b)`: either w or b
+        #   - `([0-3] ){2}`:  two of a number between 0 and 3 followed by a space
+        #   - `((\+|-) ){4}`: four of either + or - followed by a space
+        #   - `(-|[a-g][1-8])`: either a dash, or a letter between a and g followed by a number between 1 and 8
+        #   - `([1-9]\d*|0)`: one or more digits, not starting with 0, or just 0
+        if not re.match(
+            r"(w|b) ([0-3] ){2}((\+|-) ){4}(-|[a-g][1-8]) ([1-9]\d*|0)", string
+        ):
             return Failure(Error.ILLEGAL_STATUSLINE)
 
+        # split the string into blocks
         blocks = string.split()
 
-        player_result = Player.from_str(blocks[0])
-        # check player is valid
-        if isinstance(player_result, Failure):
-            return Failure(Error.ILLEGAL_STATUSLINE)
-        player = player_result.unwrap()
+        # extract the player
+        player = Player.from_str(blocks[0]).unwrap()
 
+        # extract the number of walls
         walls = tuple(map(int, blocks[1:3]))
-        # check walls are in range
-        if not (0 <= walls[0] <= 3 and 0 <= walls[1] <= 3):
-            return Failure(Error.ILLEGAL_STATUSLINE)
 
+        # extract the castling rights
         castling = tuple(map(lambda x: x == "+", blocks[3:7]))
 
+        # extract the enpassant target
         enpassant_str = blocks[7]
         enpassant = None if (enpassant_str == "-") else coords(enpassant_str)
-        # check target square is on the board
-        if enpassant is not None and not (0 <= enpassant[0] <= 7 and 0 <= enpassant[1] <= 7):
-            return Failure(Error.ILLEGAL_STATUSLINE)
 
+        # extract the halfmove clock
         clock = int(blocks[8])
-        # check clock is in range
-        if not (0 <= clock):
-            return Failure(Error.ILLEGAL_STATUSLINE)
 
         return Success(cls(player, walls, castling, enpassant, clock))
 
     @classmethod
     def standard_state(cls):
         """Generates a standard starting state, as in standard chess"""
-        # TODO: how many walls to start with?
         return cls(Player.WHITE, (3, 3), (True, True, True, True), None, 0)
 
 
@@ -397,7 +275,9 @@ class Board:
         self.__nodes: list[list[BoardNode]] = board
         """The tiles on the board"""
         self.state: BoardState = state
-        # Ensure that the walls are normalised
+        """The state of the board"""
+
+        # Ensure that the walls are normalised (i.e. that each wall corresponds to a wall on the opposite side of the adjacent node)
         self.normalise_walls()
 
     def __getitem__(self, index: tuple[int, int]) -> BoardNode:
@@ -405,6 +285,7 @@ class Board:
         return self.__nodes[index[0]][index[1]]
 
     def __setitem__(self, index: tuple[int, int], value: BoardNode):
+        """Sets the node at the given index to the given value."""
         self.__nodes[index[0]][index[1]] = value
 
     def __iter__(self) -> Iterator[list[BoardNode]]:
@@ -413,53 +294,14 @@ class Board:
         return StopIteration()
 
     def __repr__(self) -> str:
-        return f"Board({self.state=})"
+        return f"Board(player:{self.state.player.name})"
 
     def __str__(self) -> str:
         return repr(self)
 
-    def copy(self) -> "Board":
+    def copy(self) -> Self:
         """Returns a copy of the board."""
         return deepcopy(self)
-
-    def pprint(self) -> str:
-        """Returns a pretty-printed version of the board as a single string with newlines.
-
-        Draws the board as a table, with the pieces in their correct positions, with walls, mines and trapdoors marked.
-
-        Parameters
-        ----------
-        file : TextIO, optional
-            _description_, by default sys.stdout
-        """
-        table: list[list[tuple[BoardNode, str]]] = []
-        for i, row in enumerate(self.__nodes):
-            table.append([])
-            for j, node in enumerate(row):
-                table[-1].append((node, algebraic(i, j)))
-
-        string_arr = ["┌────┬────┬────┬────┬────┬────┬────┬────┐"]
-        center = ""
-        bottom = ""
-        for y, row in enumerate(table):
-            center = "│"
-            bottom = "├" if y < 7 else "└"
-            for x, (node, alg) in enumerate(row):
-                inside = (
-                    node.canonical()[-1].center(4)
-                    if any(
-                        [
-                            node.contents is not None,
-                            node.mined,
-                            node.trapdoor is not TrapdoorState.NONE,
-                        ]
-                    )
-                    else alg.center(4)
-                )
-                center += f"{inside}{'│' if (node.walls & Wall.EAST) or x==7 else ' '}"
-                bottom += f"─{'──' if (node.walls & Wall.SOUTH) or y == 7 else '  '}─{'┘' if  y == 7 and x == 7 else ('┤' if x == 7 else ('┴' if  y == 7 else '┼'))}"
-            string_arr.extend((center, bottom))
-        return "\n".join(string_arr)
 
     def canonical(self) -> str:
         """Returns a string representation of the board in canonical form.
@@ -475,6 +317,7 @@ class Board:
 
     @staticmethod
     def on_board(position: tuple[int, int]):
+        """Determines whether the given position is on the board."""
         return 0 <= position[0] < 8 and 0 <= position[1] < 8
 
     def get_line(
@@ -503,35 +346,11 @@ class Board:
         ]
 
     @classmethod
-    def from_strs(cls, strings: list[str]) -> Result["Board"]:
-        """Returns a board that is in the state described by the given string ,or list of strings.
+    def from_strs(cls, strings: list[str]) -> Result[Self]:
+        """Returns a board that is in the state described by the given list of strings.
 
         This string should not contain any comments, or a status line.
         It also should not contain any empty lines in the strings.
-
-        Both
-
-        `["rnbqkbnr",`
-
-        `"pppppppp",`
-
-        `"........",`
-
-        `"........",`
-
-        `"........",`
-
-        `"........",`
-
-        `"PPPPPPPP",`
-
-        `"RNBQKBNR"]`
-
-        and
-
-        `"rnbqkbnr\\npppppppp\\n........\\n........\\n........\\n........\\nPPPPPPPP\\nRNBQKBNR"`
-
-        are valid.
         """
 
         # transform the board lines into a 3D array of characters, such that each coordinate holds a list containing the specifier for that node and then the modifiers for that node
@@ -540,15 +359,14 @@ class Board:
             mod_list: list[str] = []
             new_line: list[list[str]] = []
             # append a dummy character to absorb any trailing modifiers
-            # TODO: what to do with spaces in board?
-            for node_list in f"{line}#".replace(" ", ""):
+            for board_char in f"{line}#":
                 # if the character is a modifier, add it to the modifier list
-                if node_list in ["|", "_"]:
-                    mod_list.append(node_list)
+                if board_char in ["|", "_"]:
+                    mod_list.append(board_char)
                     continue
 
                 # add the character to the new line
-                new_line.append([node_list] + mod_list)
+                new_line.append([board_char] + mod_list)
 
                 # clear the modifier list
                 mod_list = []
@@ -557,77 +375,83 @@ class Board:
         # create the board from the lines
         board = []
         for y, row_list in enumerate(lines):
-            if y > 7:
-                return Failure(Error.ILLEGAL_STATUSLINE)
+            # append a new row to the board
             board.append([])
             # Create a node for each character in the line
-            for x, node_list in enumerate(row_list):
+            for x, board_char in enumerate(row_list):
                 # if its the dummy character
 
-                if node_list[0] == "#":
-                    # if we've reached the end of the line, but its not the ninth position
+                if board_char[0] == "#":
+                    # we've reached the end of the line, but if its not the ninth position
                     if x != 8:
                         # return a Failure at the last correct node
                         return Failure(
                             Error.ILLEGAL_BOARD
                             % algebraic(min(x, len(row_list)) - 1, y)
                         )
-                    # else if there are modifiers on the dummy
-                    elif len(node_list) > 1:
+                    # else if there are modifiers on the dummy (i.e. there are trailing modifiers)
+                    elif len(board_char) > 1:
                         # return a failure on the right edge of the board
                         return Failure(Error.ILLEGAL_BOARD % algebraic(7, y))
 
-                    # skip further processing
+                    # skip further processing, as we have reached the end of the line
                     continue
-                # check that the line is not too long
+                # if its not the dummy char, check that the line is not too long
                 elif x > 7:
                     return Failure(Error.ILLEGAL_BOARD % algebraic(7, y))
                 # Attempt to create the node from the character
-                new_node_result: Result = BoardNode.from_str(node_list[0])
+                new_node_result: Result = BoardNode.from_str(board_char[0])
                 if isinstance(new_node_result, Failure):
                     # Node creation failed, return Failure
                     return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
                 # Node creation succeeded, unwrap result
                 new_node: BoardNode = new_node_result.unwrap()
 
-                # check for duplicate modifiers
-                if len(node_list) > 3 or (
-                    len(node_list) == 3 and node_list[1] == node_list[2]
+                # check for duplicate modifiers or too many modifiers
+                if len(board_char) > 3 or (
+                    len(board_char) == 3 and board_char[1] == board_char[2]
                 ):
                     return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
 
                 # apply the wall modifiers to the node
-                for modifier in node_list[1:]:
+                for modifier in board_char[1:]:
                     match modifier:
                         # west wall
                         case "|":
                             new_node.walls |= Wall.WEST
+                            # check that the wall is not on the west edge of the board
+                            if x == 0:
+                                return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
                         # east wall
                         case "_":
                             new_node.walls |= Wall.SOUTH
+                            # check that the wall is not on the west edge of the board
+                            if 7 == 0:
+                                return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
                         case _:
                             # if the modifier is not recognised, raise an error
                             return Failure(Error.ILLEGAL_BOARD % algebraic(x, y))
 
+                # append the node to the end of the row
                 board[-1].append(new_node)
 
             # check that the row is the right length (9 becuse of dummy character)
             if len(row_list) < 9:
                 return Failure(Error.ILLEGAL_BOARD % algebraic(len(row_list), y))
-        
+
         state_result = BoardState.from_str(strings[8])
         if isinstance(state_result, Failure):
             return state_result
         state = state_result.unwrap()
-        
+
         # check that there are no more lines
         if len(strings) > 9:
-            return Failure(Error.ILLEGAL_STATUSLINE) # TODO: where to error?
-        
+            return Failure(Error.ILLEGAL_STATUSLINE)
+
         return Success(cls(board, state))
 
     @classmethod
-    def standard_board(cls) -> Result["Board"]:
+    def standard_board(cls) -> Result[Self]:
         """Returns a board that is in standard starting positions."""
         standard_board_str = [
             "rnbqkbnr",  # black pieces
@@ -706,11 +530,15 @@ class Board:
                         # check that the pawn is not moving backwards
                         # if the move is north, and the piece is black, or the move is south and the piece is white
                         # use the fact that the player is either 1 or -1 to determine the direction of the move
-                        if (y2 - y1) * active_player < 0:
+                        if (y2 - y1) * active_player.value < 0:
                             return Failure(Error.ILLEGAL_MOVE % move.canonical())
+
+                        # TODO : en passant
                     case King():
                         # check that the king is not moving into check (i.e. that the king is not moving into a position that is attacked by the opponent)
-                        if self.attacking(move.destination, -1 * active_player):
+                        if self.being_attacked_at(
+                            move.destination, -1 * active_player.value
+                        ):
                             return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
                     case _:
@@ -747,7 +575,9 @@ class Board:
 
             case Castle():
                 # check that the king is not moving into check (i.e. that the king is not moving into a position that is attacked by the opponent)
-                if self.attacking(move.destination, -1 * self.state.player):
+                if self.being_attacked_at(
+                    move.destination, -1 * self.state.player.value
+                ):
                     return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
                 # check that the player has the right to castle
@@ -787,16 +617,23 @@ class Board:
         self[pos].contents = None
 
         # TODO: remove the mine? (assume yes)
-        # remove th mine
+        # remove the mine
         self[pos].mined = False
 
         # clear the nodes around this node if the walls allow for that
         for neighbour in self.neighbours(pos):
+            # get the walls that would block the explosion for each pair of the intermediate nodes
             from_walls, to_walls = Wall.coords_to_walls(pos, neighbour)
-            if self[pos].walls & from_walls or self[neighbour].walls & to_walls:
-                self[neighbour].contents = None
+            # check that the walls allow for the explosion
+            if (
+                self[pos].walls & from_walls == from_walls
+                or self[neighbour].walls & to_walls == to_walls
+            ):
+                # if the walls do not allow for the explosion to propagate, skip this node
+                continue
+            self[neighbour].contents = None
 
-    def apply_move(self, move: Move) -> Result["Board"]:
+    def apply_move(self, move: Move) -> Result[Self]:
         """Applies the given move to the board, returning a new Result holding the board and leaving the original unchanged."""
 
         # initialise the new board
@@ -808,34 +645,13 @@ class Board:
             return k
 
         # Apply the move
-        match move:  # TODO: complete move application
+        match move:
             case Move():  # TODO: piece captures, check, checkmate
-                # extract origin and destination
-                origin, dest = move.origin, move.destination
-
-                # swap contents of positions
-                new_board[origin].contents, new_board[dest].contents = (
-                    self[dest].contents,
-                    self[origin].contents,
-                )
-
-                dest_node = new_board[dest]
-                # mine detonation
-                if dest_node.mined:
-                    self.detonate_mine(dest)
-
-                if dest_node.trapdoor is not TrapdoorState.NONE:
-                    if dest_node.trapdoor is TrapdoorState.HIDDEN:
-                        dest_node.trapdoor = TrapdoorState.OPEN
-                    dest_node.contents = None
-                # Return a Success
-                return Success(move)
-
+                self.__move_piece(move, new_board)
             case PlaceWall():
                 back, front = Wall.coords_to_walls(move.origin, move.destination)
                 new_board[move.origin].walls |= back
                 new_board[move.destination].walls |= front
-                return Success(move)
 
             case PlaceMine():
                 new_board[move.origin].mined = True
@@ -844,29 +660,85 @@ class Board:
                 new_board[move.origin].trapdoor = TrapdoorState.HIDDEN
 
             case Castle():
-                rook_move = move.rook_move()
-                # pop out the king
-                king_piece = new_board[move.origin].contents
-                new_board[move.origin].contents = None
-                # pop out the rook
-                rook_piece = new_board[rook_move.origin].contents
-                new_board[rook_move.origin].contents = None
-
-                # place the king and rook in their new positions
-                new_board[move.destination].contents = king_piece
-                new_board[rook_move.destination].contents = rook_piece
+                self.__castle(move, new_board)
 
             case Promotion():
                 new_board[move.origin].contents = move.promotion(move.player)
 
-    def apply_moves(self, moves: list[Move]) -> Result["Board"]:
+        return Success(new_board)
+
+    def __castle(self, move: Castle, new_board: Self):
+        """Private method for castling.
+
+        Performs the actual movement of the king and rook, without any validation.
+
+        Parameters
+        ----------
+        move : Move
+            The move to apply.
+        new_board : Board
+            The new board to apply the move to.
+        """
+        rook_move = move.rook_move()
+        # pop out the king
+        king_piece = new_board[move.origin].contents
+        new_board[move.origin].contents = None
+        # pop out the rook
+        rook_piece = new_board[rook_move.origin].contents
+        new_board[rook_move.origin].contents = None
+
+        # place the king and rook in their new positions
+        new_board[move.destination].contents = king_piece
+        new_board[rook_move.destination].contents = rook_piece
+
+    def __move_piece(self, move: Move, new_board: Self):
+        """Private method for moving a piece.
+
+        Operates on and returns the new board, and does not perform any validation.
+
+        Performs the actual movement of the piece, and handles any special cases (e.g. mine detonation).
+
+        Parameters
+        ----------
+        move : Move
+            The move to apply.
+        new_board : Board
+            The new board to apply the move to.
+
+        Returns
+        -------
+        Board
+            The new board.
+        """
+        # extract origin and destination
+        origin, dest = move.origin, move.destination
+
+        # swap contents of positions
+        new_board[origin].contents, new_board[dest].contents = (
+            self[dest].contents,
+            self[origin].contents,
+        )
+
+        dest_node = new_board[dest]
+        # mine detonation
+        if dest_node.mined:
+            self.detonate_mine(dest)
+
+        if dest_node.trapdoor is not TrapdoorState.NONE:
+            if dest_node.trapdoor is TrapdoorState.HIDDEN:
+                dest_node.trapdoor = TrapdoorState.OPEN
+            dest_node.contents = None
+        # Return a Success
+        return Success(move)
+
+    def apply_moves(self, moves: list[Move]) -> Result[Self]:
         """Applies a list of moves to the board"""
         # The most recent result of a move
         last = Success(self)
 
         # For each move
         for move in moves:
-            last.and_then(
+            last = last.and_then(
                 # Apply that move to the board
                 self.apply_move,
                 move=move,
@@ -888,14 +760,10 @@ class Board:
             (position[0] + 1, position[1] - 1),
             (position[0] - 1, position[1] + 1),
         ]
-        return [
-            node
-            for node in potential_neighbours
-            if 0 <= node[0] <= 7 and 0 <= node[1] <= 7
-        ]
+        return [node for node in potential_neighbours if self.on_board(node)]
 
     def blocked(self, positions: list[tuple[int, int]]) -> bool:
-        """Determines whether the given positions are blocked by walls.
+        """Determines whether a piece could move along the given positions in order (i.e. that there are no walls blocking the movement).
 
         Parameters
         ----------
@@ -917,11 +785,14 @@ class Board:
             if walls is None:
                 continue
             # check that the piece is not jumping over a wall
-            if self[from_node].walls & walls[0] or self[to_node].walls & walls[1]:
+            if (
+                self[from_node].walls & walls[0] == walls[0]
+                or self[to_node].walls & walls[1] == walls[1]
+            ):
                 return False
         return True
 
-    def attacking(
+    def being_attacked_at(
         self, position: tuple[int, int], attacking_player: int
     ) -> list[BoardNode]:
         """Returns a list of nodes with pieces that are attacking the given position.
@@ -938,14 +809,20 @@ class Board:
         list[BoardNode]
             The list of attacking nodes.
         """
-        # TODO: finish this (better to do nodes or positions?)
 
         attacking: list[BoardNode] = []
         # check pawns
-        neighbours = self.neighbours(position)
-        for neighbour in neighbours:
-            pass  # TODO: check for pawns
-
+        for corner in map(
+            lambda x, y: (x[0] + y[0], x[1] + y[1]),
+            [position] * 4,
+            [(1, 1), (1, -1), (-1, 1), (-1, -1)],
+        ):
+            inner = self[corner]
+            if (
+                isinstance(inner.contents, Pawn)
+                and inner.contents.owner == attacking_player
+            ):
+                attacking.append(inner)
         # check for knights
         element_add = lambda x, y: (x[0] + y[0], x[1] + y[1])
         knight_positions = list(
@@ -1015,19 +892,37 @@ class Board:
         return attacking
 
     def normalise_walls(self):
+        """Adds the appropriate walls to each node, such that each wall corresponds to a wall on the opposite side of the adjacent node.
+
+        Called automatically when the board is created, but will not fail if called multiple times.
+        """
         # normalise the board walls
         for y, row in enumerate(self.__nodes):
             for x, node in enumerate(row):
-                match node.walls:
-                    case Wall.WEST:
-                        # if this node has a west wall, the node to the west must have an east wall
-                        self.__nodes[y][x - 1].walls |= Wall.EAST
-                        # remove the NONE flag from this node and its neighbour
-                        self.__nodes[y][x - 1].walls &= ~Wall.NONE
-                        self.__nodes[y][x].walls &= ~Wall.NONE
-                    case Wall.SOUTH:
-                        # if this node has a south wall, the node to the south must have a north wall
-                        self.__nodes[y - 1][x].walls |= Wall.NORTH
-                        # remove the NONE flag from this node and its neighbour
-                        self.__nodes[y - 1][x].walls &= ~Wall.NONE
-                        self.__nodes[y][x].walls &= ~Wall.NONE
+                if node.walls & Wall.WEST:
+                    # if this node has a west wall, the node to the west must have an east wall
+                    self.__nodes[y][x - 1].walls |= Wall.EAST
+                    # remove the NONE flag from this node and its neighbour
+                    self.__nodes[y][x - 1].walls &= ~Wall.NONE
+                    self.__nodes[y][x].walls &= ~Wall.NONE
+
+                if node.walls & Wall.SOUTH:
+                    # if this node has a south wall, the node to the south must have a north wall
+                    self.__nodes[y - 1][x].walls |= Wall.NORTH
+                    # remove the NONE flag from this node and its neighbour
+                    self.__nodes[y - 1][x].walls &= ~Wall.NONE
+                    self.__nodes[y][x].walls &= ~Wall.NONE
+
+                if node.walls & Wall.NORTH:
+                    # if this node has a north wall, the node to the north must have a south wall
+                    self.__nodes[y + 1][x].walls |= Wall.SOUTH
+                    # remove the NONE flag from this node and its neighbour
+                    self.__nodes[y + 1][x].walls &= ~Wall.NONE
+                    self.__nodes[y][x].walls &= ~Wall.NONE
+
+                if node.walls & Wall.EAST:
+                    # if this node has an east wall, the node to the east must have a west wall
+                    self.__nodes[y][x + 1].walls |= Wall.WEST
+                    # remove the NONE flag from this node and its neighbour
+                    self.__nodes[y][x + 1].walls &= ~Wall.NONE
+                    self.__nodes[y][x].walls &= ~Wall.NONE

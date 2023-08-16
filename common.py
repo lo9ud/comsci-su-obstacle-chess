@@ -1,15 +1,182 @@
 """Classses and functions common to all files
 """
+import enum
 import sys
-from typing import Callable, TypeVar, Generic, Union
-
-def err_print(string, *args, **kwargs):
-    print(string, *args, file=sys.stderr, **kwargs)
+from typing import Any, Callable, ParamSpec, TypeVar, Generic, Self
 
 
-# TODO: IF typing is allowed, replace Result with type alias and rename Result to __Result
-T = TypeVar("T", covariant=True)
-E = TypeVar("E", covariant=True)
+def err_print(_s):
+    sys.stderr.write(_s)
+
+class Error:
+    """Error messages as an enum."""
+
+    ILLEGAL_MOVE = "illegal move at %s"
+    """Move %s is illegal"""
+    ILLEGAL_BOARD = "illegal board at %s"
+    """Board is illegal at %s"""
+    ILLEGAL_STATUSLINE = "illegal board at statusline"
+    """Illegal statusline"""
+
+
+class Info:
+    """Informational messages as an enum."""
+
+    CHECK = "check"
+    """Player in check"""
+    CHECKMATE = "checkmate"
+    """Player checkmated"""
+    STALEMATE = "stalemate"
+    """Game at stalemate"""
+    DRAW_FIFTY = "draw due to fifty moves"
+    """Game drawn due to fifty-move rule"""
+    DRAW_THREEFOLD = "draw due to threefold repetition"
+    """Game drawn due to threefold-repetition"""
+
+
+class Wall(enum.Flag):
+    """A flag enum  for walls"""
+
+    NONE = enum.auto()
+    """No walls"""
+    NORTH = enum.auto()
+    """North wall"""
+    SOUTH = enum.auto()
+    """South wall"""
+    EAST = enum.auto()
+    """East wall"""
+    WEST = enum.auto()
+    """West wall"""
+
+    @classmethod
+    def to_str(cls, walls: Self) -> str:
+        """Constructs a string of which walls are contained within a wall flag
+
+        Parameters
+        ----------
+        walls : int
+            The wall flag to check
+
+        Returns
+        -------
+        str
+            The constructed string
+        """
+        retval = []
+        if walls & Wall.NORTH:
+            retval.append("NORTH")
+        if walls & Wall.SOUTH:
+            retval.append("SOUTH")
+        if walls & Wall.EAST:
+            retval.append("EAST")
+        if walls & Wall.WEST:
+            retval.append("WEST")
+        return " ".join(retval) or "NONE"
+
+    @classmethod
+    def get_wall_direction(
+        cls, _from: tuple[int, int], _to: tuple[int, int]
+    ) -> tuple[Self, Self]:
+        """Returns the types of wall that would block motion between _from and _to
+
+        Returns a tuple of the walls that _from would have to block the motion and the walls that _to would need to block the motion
+
+        Parameters
+        ----------
+        _from : tuple[int, int]
+            The position a piece is coming from
+        _to : tuple[int,int]
+            THe position a piece is going to
+
+        Returns
+        -------
+        tuple[int, int]
+            The correct wall code for _from and for _to
+        """
+        x1, y1, x2, y2 = *_from, *_to
+        match (x1 == x2, y1 == y2):
+            # East-West movement
+            case (True, False):
+                return (Wall.SOUTH, Wall.NORTH) if y2 > y1 else (Wall.NORTH, Wall.SOUTH)
+            # North-South movement
+            case (False, True):
+                return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
+            # Diagonal movement
+            case (True, True):
+                from_walls = Wall.NONE
+                to_walls = Wall.NONE
+                if y1 > y2:  # Going Northwards
+                    from_walls |= Wall.NORTH
+                    from_walls &= ~Wall.NONE
+                    to_walls &= Wall.SOUTH
+                    from_walls &= ~Wall.NONE
+                    if x1 > x2:
+                        from_walls &= Wall.WEST
+                        to_walls &= Wall.EAST
+                    else:
+                        from_walls &= Wall.EAST
+                        to_walls &= Wall.WEST
+                else:  # Going Southwards
+                    from_walls &= Wall.SOUTH
+                    from_walls &= ~Wall.NONE
+                    to_walls &= Wall.NORTH
+                    from_walls &= ~Wall.NONE
+                    if x1 > x2:
+                        from_walls &= Wall.WEST
+                        to_walls &= Wall.EAST
+                    else:
+                        from_walls &= Wall.EAST
+                        to_walls &= Wall.WEST
+                return (from_walls, to_walls)
+            case _:
+                return (Wall.NONE, Wall.NONE)
+
+    @classmethod
+    def coords_to_walls(
+        cls, _from: tuple[int, int], _to: tuple[int, int]
+    ) -> tuple[Self, Self]:
+        """Transforms two coordinates into a wall flag
+
+        Parameters
+        ----------
+        _from : tuple[int,int]
+            The "back" of the wall
+        _to : tuple[int, int]
+            The "front" of the wall
+
+        Returns
+        -------
+        int
+            The wall flag
+        """
+        x1, y1, x2, y2 = *_from, *_to
+        match (x1 == x2, y1 == y2):
+            # East-West movement
+            case (True, False):
+                return (Wall.SOUTH, Wall.NORTH) if y2 > y1 else (Wall.NORTH, Wall.SOUTH)
+            # North-South movement
+            case (False, True):
+                return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
+            case _:
+                return (Wall.NONE, Wall.NONE)
+
+
+class TrapdoorState(enum.Enum):
+    """The possible states of a trapdoor as an "enum"."""
+
+    NONE = enum.auto()
+    """No trapdoor"""
+    HIDDEN = enum.auto()
+    """Trapdoor present (Hidden)"""
+    OPEN = enum.auto()
+    """Trapdoor present (Open)"""
+
+
+T = TypeVar("T")
+S = TypeVar("S")
+E = TypeVar("E")
+
+
 class Result(Generic[T]):
     """A result monad with two possible states:
 
@@ -19,7 +186,7 @@ class Result(Generic[T]):
     This class provides a method unwrap to extract its payload
     """
 
-    def __init__(self, payload:T):
+    def __init__(self, payload: T):
         self.__payload = payload
 
     def unwrap(self) -> T:
@@ -43,8 +210,8 @@ class Result(Generic[T]):
         self.__payload = payload
 
     def and_then(
-        self, f:Callable[[T], "Result[E]"|E], *args, **kwargs
-    ) -> "Result[E]":  # TODO: fix typing ie f:funtion[returns result]
+        self, f: Callable[..., E | "Result[E]"], *args, **kwargs
+    ) -> "Result[E]":
         """Applies a function to the payload of this Result and return a new Result
 
         Failures pass through unchanged.
@@ -80,8 +247,8 @@ class Result(Generic[T]):
         return self
 
 
-class Success(Result, Generic[T]):
-    def __init__(self, payload:T=None):
+class Success(Result[T]):
+    def __init__(self, payload: T = None):
         super().__init__(payload)
 
 
@@ -94,14 +261,15 @@ class Failure(Result):
     def __init__(self, reason: str = "") -> None:
         super().__init__(reason)
 
-    def and_then(self, f, *args, **kwargs) -> "Result":
+    def and_then(self, f, *args, **kwargs) -> Self:
         return self
 
     def on_err(self, f, *args):
         f(*args)
         return self
 
-class Player:
+
+class Player(enum.Enum):
     """Player enum
 
     Members:
@@ -113,14 +281,14 @@ class Player:
     WHITE = -1
     BLACK = 1
 
-    @staticmethod
-    def from_str(string: str) -> Result[int]:
+    @classmethod
+    def from_str(cls, string: str) -> Result[Self]:
         return (
             Success(Player.WHITE)
             if string.lower() == "w"
             else Success(Player.BLACK)
             if string.lower() == "b"
-            else Failure()
+            else Failure("           ")
         )
 
     @staticmethod
@@ -208,32 +376,3 @@ def is_white(i, j) -> bool:
     return not bool((i + j) % 2)
 
 
-if __name__ == "__main__":
-    print("Testing algebraic()")
-    for y in range(8):
-        for x in range(8):
-            print(f"{x=}|{y=}|{algebraic(x, y)} ", end = "")
-        print()
-    for y in range(8):
-        for x in range(8):
-            print(f"{algebraic(x, y)} ", end = "")
-        print()
-
-    print("\nTesting inverse algebraic()/coords()")
-    for x in range(8):
-        for y in range(8):
-            print(str(coords(algebraic(x, y)) == (x, y)).ljust(5), end = "")
-        print()
-
-    print("\nTesting constrain()")
-    for x in range(8):
-        print("(%i)"%(constrain(x, 2, 5)))
-
-    print("\nTesting is_white()")
-    print("Black squares are '░░', white squares are '██'")
-    print("  a b c d e f g h")
-    for x in range(8):
-        print("%i "%(8-x), end = "")
-        for y in range(8):
-            print("██" if is_white(x, y) else "░░", end = "")
-        print()
