@@ -65,7 +65,7 @@ class Piece:
         return move in self.delta
 
     @classmethod
-    def from_str(cls, string: str) -> Result[Self]:
+    def from_str(cls, string: str) -> Result["Piece"]:
         """Returns a piece from a string, using standard algebraic notation.
 
         Parameters
@@ -79,21 +79,20 @@ class Piece:
             Some subclass of Piece, depending on the string.
         """
         player = Player.WHITE if string.isupper() else Player.BLACK
-        match string.lower():
-            case "p":
-                return Success(Pawn(player))
-            case "n":
-                return Success(Knight(player))
-            case "b":
-                return Success(Bishop(player))
-            case "r":
-                return Success(Rook(player))
-            case "q":
-                return Success(Queen(player))
-            case "k":
-                return Success(King(player))
-            case _:
-                return Failure()
+        if string.lower() == "p":
+            return Success(Pawn(player))
+        elif string.lower() == "n":
+            return Success(Knight(player))
+        elif string.lower() == "b":
+            return Success(Bishop(player))
+        elif string.lower() == "r":
+            return Success(Rook(player))
+        elif string.lower() == "q":
+            return Success(Queen(player))
+        elif string.lower() == "k":
+            return Success(King(player))
+        else:
+            return Failure()
 
 
 class Pawn(Piece):

@@ -4,7 +4,7 @@ Defines MoveGenerator, which yields moves from a file, socket, console or AI; an
 """
 
 
-from typing import Iterator, Generator, TextIO
+from typing import Iterator, TextIO
 from common import *
 from move import Move
 import socket
@@ -28,9 +28,9 @@ class RemoteConnection:
     @classmethod
     def as_host(
         cls, friendly_name=socket.gethostname(), listen_timeout=120
-    ) -> Result[Self]:
+    ) -> Result["RemoteConnection"]:
         """Open up to search requests, and multicast a search request to the group to discover other players.
-        
+
         Upon recieving a search request, the host will send a unicast response to the sender, and at the end of the timeout, will return a RemoteConnection object to the first client to connect.
 
         listen_timeout: The number of seconds to listen for responses. If 0, will listen forever. This can be overridden by the user with Ctrl+C. Thsi has limited resolution, so may not be exact.
@@ -137,7 +137,7 @@ class RemoteConnection:
     @classmethod
     def as_slave(
         cls, friendly_name=socket.gethostname(), broadcast_timeout=120
-    ) -> Result[Self]:
+    ) -> Result["RemoteConnection"]:
         """Attempt to connect to a host."""
 
         # initialize the multicast sender
@@ -176,9 +176,9 @@ class RemoteConnection:
             ):  # if the user enters Ctrl+C, break out of the loop
                 break
             else:  # if a message is recieved, append it to the list of responses
-                match msg.decode().split(":"):
-                    case [host_friendly_name, timeout]:
-                        hosts.add((host_friendly_name, addr, port, timeout))
+                # TODO: try/except on unpack
+                host_friendly_name, timeout = msg.decode().split(":")
+                hosts.add((host_friendly_name, addr, port, timeout))
         # User has ended the search, or timeout reached, so close the multicast socket
         mcast_sock.close()
 
@@ -274,17 +274,11 @@ class MoveSource(Iterator[Result[Move]]):
     def __next__(self) -> Result[Move]:
         return Success(next(self.__source))
 
-    def __enter__(self) -> Generator[Result[Move], None, None]:
-        return iter(self)  # TODO: fix this
+    def __enter__(self) -> Iterator[Result[Move]]:
+        return (move for move in self)  # TODO: fix this
 
     def __exit__(self, type, value, traceback) -> bool:
-        match type:  # match the type of exception
-            case None:  # if no exception was raised, close the source
-                self.close()
-                return True
-            case _:  # if an exception was raised, close the source and reraise the exception
-                self.close()
-                raise value
+        return True  # TODO: error handling here
 
 
 class ConsoleMoveSource(MoveSource):
@@ -390,18 +384,24 @@ class RemoteMoveSink(MoveSink):
 
 
 class GraphicMoveSink(MoveSink):  # TODO implement this
-    def __init__(self, player: int) -> None:
-        raise NotImplementedError
+    ...
+    # def __new__(cls) -> Self:
+    #     # only import the graphics module if needed, as pygame has a long startup time.
+    #     # TODO: surely theres a better way to do this
+    #     from canvas import App
+    #     return super().__new__(cls)
 
-    def send(self, move: Move) -> None:
-        raise NotImplementedError
+    # def __init__(self, _app:"App") -> None:
+    #     self.app = _app
+
+    # def send(self, move: Move) -> None:
+    #     self.app.send(move)
+    #     raise NotImplementedError
 
 
 class FileMoveSink(MoveSink):
-    def __init__(self, file: str | TextIO) -> None:
+    def __init__(self, file: TextIO) -> None:
         super().__init__()
-        if isinstance(file, str):
-            file = open(file, "w")
         self.file = file
         self.__tmp = ""
 

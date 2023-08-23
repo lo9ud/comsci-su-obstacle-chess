@@ -46,6 +46,12 @@ def main():
         return
     current_game = game_result.unwrap()
 
+    # if a game file path was provided, read it in
+    if game_file_path:
+        with open(game_file_path, "r") as game_file:
+            raw_game_contents = game_file.readlines()
+            current_game.play_move_strs(raw_game_contents)
+    
     # open output file
     with open(output_file_path, "w") as output_file:
         # dump the board to the output file

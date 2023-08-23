@@ -1,6 +1,8 @@
 from common import *
+from common import Player
 from piece import Piece
 from board import Wall
+import re
 
 
 class Move:
@@ -9,73 +11,62 @@ class Move:
     Stores the move's origin and destination, and provides methods for transforming it into several representations
     """
 
-    def __init__(
-        self, player: Player, origin: tuple[int, int], destination: tuple[int, int]
-    ) -> None:
+    std_move_re = re.compile(r"\w\d-\w\d(?:=\w)")
+    castle_re = re.compile(r"0(-0){1,2}")
+
+    def __init__(self, player: Player, origin: tuple, destination: tuple) -> None:
         self.player = player
         self.origin = origin
         self.destination = destination
-        self.delta: tuple[int, int] = tuple(
+        self.delta: tuple = tuple(
             map(lambda x: abs(x[1] - x[0]), zip(origin, destination))
         )
 
     @classmethod
-    def from_str(cls, player: Player, string: str) -> Result[Self]:
+    def from_str(cls, player: Player, string: str) -> Result["Move"]:
         # TODO: wall transformation from direction-position to position-position
         # TODO: pawn promotion transformation
-        match list(string):
-            # standard move
-            case [
-                x1,
-                y1,
-                "-",
-                x2,
-                y2,
-            ] if x1.isalpha() and y1.isdigit() and x2.isalpha() and y2.isdigit():
-                return Success(Move(player, coords(x1 + y1), coords(x2 + y2)))
-            # pawn promotion
-            case [
-                x1,
-                y1,
-                "-",
-                x2,
-                y2,
-                "=",
-                p,
-            ] if x1.isalpha() and y1.isdigit() and x2.isalpha() and y2.isdigit() and p.isalpha():
+        # TODO: check that failures are passing correctly
+        # TODO: ensure valid coordinates
+        if cls.std_move_re.match(string):
+            origin, dest = string[:2], string[3:5]
+            if "=" in string:
+                new_piece = Piece.from_str(string[-1])
+                if isinstance(new_piece, Failure):
+                    return Failure()
                 return Success(
                     Promotion(
                         player,
-                        coords(x1 + y1),
-                        coords(x2 + y2),
-                        Piece.from_str(p).unwrap().__class__,
+                        coords(origin),
+                        coords(dest),
+                        new_piece.unwrap().__class__,
                     )
-                )  # TODO: clean this up
+                )
+            return Success(Move(player, coords(origin), coords(dest)))
             # castling
-            case ["0", "-", "0", *queen]:
-                if queen == ["-", "0"]:
-                    return Success(QueenCastle(player))
-                return Success(KingCastle(player))
-            # special moves
-            # trapdoor
-            case ["D", x, y] if x.isalpha() and y.isdigit():
-                return Success(PlaceTrapdoor(player, coords(x + y)))
+        elif cls.castle_re.match(string):
+            if len(string) > 3:
+                return Success(QueenCastle(player))
+            return Success(KingCastle(player))
+        elif string.startswith("D"):
+            return Success(PlaceTrapdoor(player, coords(string[1:3])))
             # mine
-            case ["M", x, y] if x.isalpha() and y.isdigit():
-                return Success(PlaceMine(player, coords(x + y)))
-            # wall
-            case [("|" | "_" as wall), x, y]:
-                # west wall
-                if wall == "|":
-                    _from = coords(x + y)
-                    _to = coords(x + y[0] + str(int(y[1]) + 1))
-                    _to = _to[0] - 1, _to[1]
-                # south wall
-                else:  # wall == "_"
-                    _from = coords(x + y)
-                    _to = coords(x + y)
-                    _to = _to[0], _to[1] + 1
-                return Success(PlaceWall(player, _from, _to))
+        elif string.startswith("M"):
+            return Success(PlaceMine(player, coords(string[1:3])))
+        elif string[0] in ["|", "_"]:
+            x, y = string[1:3]
+            wall = string[0]
+            _from = coords(x + y)
+            # west wall
+            if wall == "|":
+                _to = coords(x + y[0] + str(int(y[1]) + 1))
+                _to = _to[0] - 1, _to[1]
+            else:  # wall == "_"
+                _to = coords(x + y)
+                _to = _to[0], _to[1] + 1
+            return Success(PlaceWall(player, _from, _to))
+        elif string == "...":
+            return Success(NullMove())
         return Failure()
 
     def canonical(self) -> str:
@@ -88,6 +79,13 @@ class Move:
         """
         return f"{algebraic(*self.origin)}-{algebraic(*self.destination)}"
 
+class NullMove(Move):
+    """Defines the null move `...`, which is used to represent a partially played game where the last played move was white's."""
+    def __init__(self, player: Player = Player.WHITE, origin: tuple = (0,0), destination: tuple = (0,0)) -> None:
+        super().__init__(player, origin, destination)
+    
+    def canonical(self) -> str:
+        return "..."
 
 class PlaceWall(Move):
     """Represents a wall placement in the game.
@@ -95,24 +93,22 @@ class PlaceWall(Move):
     The wall is placed between the two coordinates, which must be adjacent and not diagonal.
     """
 
-    def __init__(
-        self, player: Player, origin: tuple[int, int], destination: tuple[int, int]
-    ) -> None:
+    def __init__(self, player: Player, origin: tuple, destination: tuple) -> None:
         super().__init__(player, origin, destination)
 
     def canonical(self) -> str:
         # TODO: Implement the fact the only south/west walls are allowed
-        match Wall.get_wall_direction(self.origin, self.destination):
-            case Wall.SOUTH:
-                return f"_{algebraic(*self.origin)}"
-            case Wall.WEST:
-                return f"|{algebraic(*self.origin)}"
-            case _:
-                raise ValueError
+        node_wall = Wall.get_wall_direction(self.origin, self.destination)
+        if node_wall == Wall.SOUTH:
+            return f"_{algebraic(*self.origin)}"
+        elif node_wall == Wall.WEST:
+            return f"|{algebraic(*self.origin)}"
+        else:
+            raise ValueError
 
 
 class PlaceMine(Move):
-    def __init__(self, player: Player, origin: tuple[int, int]) -> None:
+    def __init__(self, player: Player, origin: tuple) -> None:
         super().__init__(player, origin, origin)
 
     def canonical(self) -> str:
@@ -120,7 +116,7 @@ class PlaceMine(Move):
 
 
 class PlaceTrapdoor(Move):
-    def __init__(self, player: Player, origin: tuple[int, int]) -> None:
+    def __init__(self, player: Player, origin: tuple) -> None:
         super().__init__(player, origin, origin)
 
     def canonical(self) -> str:
@@ -136,9 +132,9 @@ class Promotion(Move):
     def __init__(
         self,
         player: Player,
-        origin: tuple[int, int],
-        destination: tuple[int, int],
-        promotion: type[Piece],
+        origin: tuple,
+        destination: tuple,
+        promotion: type,
     ) -> None:
         super().__init__(player, origin, destination)
         self.promotion = promotion
@@ -157,14 +153,13 @@ class Castle(Move):  # TODO: Implement castling
     This class should not be manually instantiated.
     """
 
-    def __init__(self, player: Player, destination: tuple[int, int]) -> None:
-        match player:
-            case Player.WHITE:
-                origin = (7, 4)
-            case Player.BLACK:
-                origin = (0, 4)
-            case _:
-                origin = (0, 0)
+    def __init__(self, player: Player, destination: tuple) -> None:
+        if player == Player.WHITE:
+            origin = (7, 4)
+        elif player == Player.BLACK:
+            origin = (0, 4)
+        else:
+            origin = (0, 0)
         super().__init__(player, origin, destination)
 
     def rook_move(self) -> Move:
@@ -188,23 +183,21 @@ class Castle(Move):  # TODO: Implement castling
 
 class QueenCastle(Castle):
     def __init__(self, player: Player) -> None:
-        match player:
-            case Player.WHITE:
-                destination = (7, 6)
-            case Player.BLACK:
-                destination = (0, 2)
-            case _:
-                destination = (0, 0)
+        if player == Player.WHITE:
+            destination = (7, 6)
+        elif player == Player.BLACK:
+            destination = (0, 2)
+        else:
+            destination = (0, 0)
         super().__init__(player, destination)
 
 
 class KingCastle(Castle):
     def __init__(self, player: Player) -> None:
-        match player:
-            case Player.WHITE:
-                destination = (7, 2)
-            case Player.BLACK:
-                destination = (0, 4)
-            case _:
-                destination = (0, 0)
+        if player == Player.WHITE:
+            destination = (7, 2)
+        elif player == Player.BLACK:
+            destination = (0, 4)
+        else:
+            destination = (0, 0)
         super().__init__(player, destination)

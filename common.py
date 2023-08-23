@@ -2,11 +2,12 @@
 """
 import enum
 import sys
-from typing import Any, Callable, ParamSpec, TypeVar, Generic, Self
+from typing import Any, Callable, TypeVar, Generic
 
 
 def err_print(_s):
     sys.stderr.write(_s)
+
 
 class Error:
     """Error messages as an enum."""
@@ -49,7 +50,7 @@ class Wall(enum.Flag):
     """West wall"""
 
     @classmethod
-    def to_str(cls, walls: Self) -> str:
+    def to_str(cls, walls: "Wall") -> str:
         """Constructs a string of which walls are contained within a wall flag
 
         Parameters
@@ -74,9 +75,7 @@ class Wall(enum.Flag):
         return " ".join(retval) or "NONE"
 
     @classmethod
-    def get_wall_direction(
-        cls, _from: tuple[int, int], _to: tuple[int, int]
-    ) -> tuple[Self, Self]:
+    def get_wall_direction(cls, _from: tuple, _to: tuple) -> tuple:
         """Returns the types of wall that would block motion between _from and _to
 
         Returns a tuple of the walls that _from would have to block the motion and the walls that _to would need to block the motion
@@ -94,15 +93,9 @@ class Wall(enum.Flag):
             The correct wall code for _from and for _to
         """
         x1, y1, x2, y2 = *_from, *_to
-        match (x1 == x2, y1 == y2):
-            # East-West movement
-            case (True, False):
-                return (Wall.SOUTH, Wall.NORTH) if y2 > y1 else (Wall.NORTH, Wall.SOUTH)
-            # North-South movement
-            case (False, True):
-                return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
+        if x1 == x2:
             # Diagonal movement
-            case (True, True):
+            if y1 == y2:
                 from_walls = Wall.NONE
                 to_walls = Wall.NONE
                 if y1 > y2:  # Going Northwards
@@ -128,13 +121,15 @@ class Wall(enum.Flag):
                         from_walls &= Wall.EAST
                         to_walls &= Wall.WEST
                 return (from_walls, to_walls)
-            case _:
-                return (Wall.NONE, Wall.NONE)
+            # East-West movement
+            else:
+                return (Wall.SOUTH, Wall.NORTH) if y2 > y1 else (Wall.NORTH, Wall.SOUTH)
+            # North-South movement
+        else:
+            return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
 
     @classmethod
-    def coords_to_walls(
-        cls, _from: tuple[int, int], _to: tuple[int, int]
-    ) -> tuple[Self, Self]:
+    def coords_to_walls(cls, _from: tuple, _to: tuple) -> tuple:
         """Transforms two coordinates into a wall flag
 
         Parameters
@@ -150,15 +145,14 @@ class Wall(enum.Flag):
             The wall flag
         """
         x1, y1, x2, y2 = *_from, *_to
-        match (x1 == x2, y1 == y2):
-            # East-West movement
-            case (True, False):
-                return (Wall.SOUTH, Wall.NORTH) if y2 > y1 else (Wall.NORTH, Wall.SOUTH)
-            # North-South movement
-            case (False, True):
-                return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
-            case _:
-                return (Wall.NONE, Wall.NONE)
+        # East-West movement
+        if x1 == x2 and y1 != y2:
+            return (Wall.SOUTH, Wall.NORTH) if y2 > y1 else (Wall.NORTH, Wall.SOUTH)
+        # North-South movement
+        elif x1 != x2 and y1 == y2:
+            return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
+        else:
+            return (Wall.NONE, Wall.NONE)
 
 
 class TrapdoorState(enum.Enum):
@@ -172,7 +166,7 @@ class TrapdoorState(enum.Enum):
     """Trapdoor present (Open)"""
 
 
-T = TypeVar("T")
+T = TypeVar("T", covariant=True)
 S = TypeVar("S")
 E = TypeVar("E")
 
@@ -183,7 +177,7 @@ class Result(Generic[T]):
      - Success(payload)
      - Failure(reason)
 
-    This class provides a method unwrap to extract its payload
+    This was implemented before becoming aware that try/except was allowed. Inspired by Rust-style Result.
     """
 
     def __init__(self, payload: T):
@@ -209,9 +203,7 @@ class Result(Generic[T]):
         """
         self.__payload = payload
 
-    def and_then(
-        self, f: Callable[..., E | "Result[E]"], *args, **kwargs
-    ) -> "Result[E]":
+    def and_then(self, f: Callable, *args, **kwargs) -> "Result[E]":
         """Applies a function to the payload of this Result and return a new Result
 
         Failures pass through unchanged.
@@ -261,7 +253,7 @@ class Failure(Result):
     def __init__(self, reason: str = "") -> None:
         super().__init__(reason)
 
-    def and_then(self, f, *args, **kwargs) -> Self:
+    def and_then(self, f, *args, **kwargs) -> "Failure":
         return self
 
     def on_err(self, f, *args):
@@ -282,7 +274,7 @@ class Player(enum.Enum):
     BLACK = 1
 
     @classmethod
-    def from_str(cls, string: str) -> Result[Self]:
+    def from_str(cls, string: str) -> Result["Player"]:
         return (
             Success(Player.WHITE)
             if string.lower() == "w"
@@ -295,7 +287,15 @@ class Player(enum.Enum):
     def canonical(player):
         return "w" if player == Player.WHITE else "b"
 
+    def other(self) -> "Player":
+        """Returns the other player when called on a player
 
+        Returns
+        -------
+        Player
+            The other player
+        """
+        return Player.WHITE if self == Player.BLACK else Player.BLACK
 def algebraic(x: int, y: int):
     """Converts a tuple of coordinates to algebraic notation.
 
@@ -316,7 +316,7 @@ def algebraic(x: int, y: int):
     return char_part + int_part
 
 
-def coords(alg: str) -> tuple[int, int]:
+def coords(alg: str) -> tuple:
     """Converts a string in algebraic notation to a tuple of coordinates.
 
     Parameters
@@ -330,30 +330,6 @@ def coords(alg: str) -> tuple[int, int]:
         The coordinates represented by the string
     """
     return (7 - int(alg[1]) + 1, ord(alg[0]) - 97)
-
-
-def constrain(
-    x: int | float, _min: int | float = -1e32, _max: int | float = 1e32
-) -> int | float:
-    """Constrains a value to between _min and _max
-
-    Leaving _min or _max empty will default to arbitrarily high/low numbers
-
-    Parameters
-    ----------
-    x : int | float
-        The value to constrain
-    _min : int | float
-        The minimum value
-    _max : int | float
-        The maximum value
-
-    Returns
-    -------
-    int|float
-        The constrained value
-    """
-    return max(_min, min(x, _max))
 
 
 def is_white(i, j) -> bool:
@@ -376,3 +352,8 @@ def is_white(i, j) -> bool:
     return not bool((i + j) % 2)
 
 
+if __name__ == "__main__":
+    for y in range(8):
+        for x in range(8):
+            print(algebraic(x, y), end=" ")
+        print()
