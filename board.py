@@ -1219,7 +1219,7 @@ class Board:
                     origin.x,
                     (origin.y + dest.y) // 2,
                 )  # set enpassant target
-            elif dest == self.state.enpassant: # perform enpassant capture
+            elif self.state.enpassant and dest == self.state.enpassant: # perform enpassant capture
                 capture_pos = Position(dest.x, origin.y) # the capture position has the same y as the origin and the same x as the destination
                 capture = self[capture_pos].contents
                 self[capture_pos].contents = None
