@@ -4,29 +4,12 @@ from typing import Callable, TYPE_CHECKING
 if TYPE_CHECKING:  # allows typechecking while preventing circular imports
     from move import Move
 
-
-class PieceDelta:
-    """Defines the movement of a piece."""
-
-    def __init__(self, delta_f: Callable[["Move"], bool]) -> None:
-        self.__delta = delta_f
-        """A function that takes a move, and returns whether the move is valid for the piece."""
-
-    def __contains__(self, item: "Move") -> bool:
-        return self.__delta(item)
-
-    def __call__(self, move: "Move") -> bool:
-        return self.__delta(move)
-
-
 class Piece:
     """The base class for all pieces.
 
     Provides methods for representing the piece's state, and provides methods for manipulating it.
     """
 
-    delta = PieceDelta(lambda _: False)
-    """The movement of the piece, as a PieceDelta with containment implemented."""
     jumps = False
     """Whether the piece can jump over other pieces and walls."""
 
@@ -49,20 +32,19 @@ class Piece:
         """
         raise NotImplementedError
 
-    def can_move(self, move: "Move") -> bool:
-        """Returns whether the piece can move to the given location.
-
-        Parameters
-        ----------
-        move : Move
-            The move to check.
-
-        Returns
-        -------
-        bool
-            Whether the piece can move to the given location.
+    @staticmethod
+    def check(move: "Move") -> bool:
+        """Does basic validation on a move. Checks that the move fits the basic move pattern for the piece.
         """
-        return move in self.delta
+        valid = True
+
+        # check that the piece is moving
+        valid &= move.delta != P(0,0)
+
+        # check that the move starts and ends on the board
+        valid &= all(map(lambda x: 0 <= x <= 7, (*move.origin, *move.destination)))
+
+        return valid
 
     @classmethod
     def from_str(cls, string: str) -> Result["Piece"]:
@@ -98,83 +80,115 @@ class Piece:
 class Pawn(Piece):
     """A pawn."""
 
-    delta = PieceDelta(
-        lambda move: move.delta == (0, 1)  # Standard move
-        or move.delta == (0, 2)  # First move
-        or move.delta == (1, 1)  # Capture
-    )
-
     def canonical(self) -> str:
         return "p" if self.owner == Player.BLACK else "P"
 
-    ...
+    @staticmethod
+    def check(move) -> bool:
+        # check base conditions
+        valid = Piece.check(move)
+
+        # check that the pawn is moving forward by one or two
+        valid &= abs(move.delta.y) in [1, 2]
+
+        # check that the pawn is moving sideways by at most one
+        valid &= abs(move.delta.x) <= 1
+        return valid
 
 
 class Knight(Piece):
     """A knight."""
 
-    delta = PieceDelta(
-        lambda move: move.delta == [1, 2]  # Standard move
-        or move.delta == [2, 1]  # Standard move
-    )
     jumps = True
+
+    offsets = [
+        P(2, 1),
+        P(2, -1),
+        P(-2, 1),
+        P(-2, -1),
+        P(1, 2),
+        P(1, -2),
+        P(-1, 2),
+        P(-1, -2),
+    ]
+    """The offsets that a knight can move by."""
 
     def canonical(self) -> str:
         return "n" if self.owner == Player.BLACK else "N"
 
-    ...
+    @staticmethod
+    def check(move) -> bool:
+        valid = Piece.check(move)
+
+        # check that the knight is moving in an L shape
+        valid &= (
+            abs(move.delta.x) == 2
+            and abs(move.delta.y) == 1
+            or abs(move.delta.x) == 1
+            and abs(move.delta.y) == 2
+        )
+
+        return valid
 
 
 class Bishop(Piece):
     """A bishop."""
 
-    delta = PieceDelta(lambda move: move.delta[0] == move.delta[1])  # Standard move
-
     def canonical(self) -> str:
         return "b" if self.owner == Player.BLACK else "B"
 
-    ...
+    @staticmethod
+    def check(move) -> bool:
+        valid = Piece.check(move)
+
+        # check that the bishop is moving diagonally
+        valid &= abs(move.delta.x) == abs(move.delta.y)
+
+        return valid
 
 
 class Rook(Piece):
     """A rook."""
 
-    delta = PieceDelta(
-        lambda move: (
-            move.delta[0] == 0 and move.delta[1] > 0
-        )  # Standard (vertical) move
-        or (move.delta[1] == 0 and move.delta[0] > 0)  # Standard (horizontal) move
-    )
-
     def canonical(self) -> str:
         return "r" if self.owner == Player.BLACK else "R"
 
-    ...
+    @staticmethod
+    def check(move) -> bool:
+        valid = Piece.check(move)
+
+        # check that the rook is moving orthogonally
+        valid &= min(move.delta) == 0
+
+        return valid
 
 
 class Queen(Piece):
     """A queen."""
 
-    delta = PieceDelta(
-        lambda move: move.delta[0] == move.delta[1]  # Diagonal move
-        or (move.delta[0] == 0 and move.delta[1] > 0)  # Standard (vertical) move
-        or (move.delta[1] == 0 and move.delta[0] > 0)  # Standard (horizontal) move
-    )
-
     def canonical(self) -> str:
         return "q" if self.owner == Player.BLACK else "Q"
 
-    ...
+    @staticmethod
+    def check(move) -> bool:
+        valid = Piece.check(move)
+        # queens can move like rooks or like bishops
+        valid &= Rook.check(move) or Bishop.check(move)
+
+        return valid
 
 
 class King(Piece):
     """A king."""
 
-    delta = PieceDelta(
-        lambda move: move.delta[0] <= 1 and move.delta[1] <= 1  # Standard move
-    )
-
     def canonical(self) -> str:
         return "k" if self.owner == Player.BLACK else "K"
 
-    ...
+    @staticmethod
+    def check(move) -> bool:
+        valid = Piece.check(move)
+
+        # check that the king is moving by at most one in any direction
+        valid &= all(map(lambda x: abs(x) <= 1, move.delta))
+
+        return valid

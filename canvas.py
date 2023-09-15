@@ -3,20 +3,11 @@ import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 import functools
-import board
-from move import Move
-from typing import Protocol
 from common import *
 
 # import stddraw
 
-number = int | float
-
-
-class ClickEvent:
-    def __init__(self, x: number, y: number):
-        self.x, self.y = x, y
-
+number = Union[int, float]
 
 class Rect:
     def __init__(self, *args) -> None:
@@ -135,126 +126,6 @@ class Rect:
             center[1] + height / 2,
         )
 
-
-class Drawable(Protocol):
-    """Drawable interface for all controls that implement a `draw_in` method"""
-
-    def draw_in(self, draw_boundary: Rect):
-        pass
-
-
-class ClickDelegate(Protocol):
-    """This class delegates clicks to its children"""
-
-    def get_click_handler(self):
-        ...
-
-
-class ClickSink(Protocol):
-    """This class can handle clicks, returning a"""
-
-    def handle_click(
-        self, __e: ClickEvent
-    ) -> (
-        str
-    ):  # TODO: return type. str, custom message object... (should be queue-transferable)
-        ...
-
-
-class Piece(Drawable):
-    piece_icons = {
-        1: {
-            "king": "\u265A",
-            "queen": "\u265B",
-            "rook": "\u265C",
-            "bishop": "\u265D",
-            "knight": "\u265E",
-            "pawn": "\u265F",
-        },
-        -1: {
-            "king": "\u2654",
-            "queen": "\u2655",
-            "rook": "\u2656",
-            "bishop": "\u2657",
-            "knight": "\u2658",
-            "pawn": "\u2659",
-        },
-        "mine": "\u26EF",
-        "trapdoor": {"open": "\u2610", "closed": "\u2612"},
-    }
-
-    def __init__(self) -> None:
-        pass
-
-    @classmethod
-    def draw(cls, draw_boundary: Rect, piece: "Piece"):
-        pass
-
-
-class Mine(Piece):
-    def __init__(self) -> None:
-        pass
-
-
-class Wall(Drawable):
-    def __init__(self) -> None:
-        pass
-
-
-class Tile(Drawable):
-    def __init__(self, node: board.BoardNode) -> None:
-        pass
-
-
-class Board(Drawable):
-    req = "board"
-
-    def __init__(self, pos: Rect) -> None:
-        pass
-
-
 class App:
     def __init__(self) -> None:
-        self.controls: dict[int, tuple[Rect, Drawable]] = {}
-        self._rects: dict[int, Rect] = {}
-
-    def register(self, pos: Rect, cont: Drawable) -> int:
-        self.controls[o := hash(pos)] = (pos, cont)
-        self._rects[o] = pos
-        return o
-
-    def unregister(self, key: int):
-        del self.controls[key]
-
-    # def get_click_controller(self):
-    #     # construct a clickevent
-    #     event = ClickEvent(
-    #         x:=stddraw.mouseX(),
-    #         y:=stddraw.mouseY()
-    #     )
-    #     # construct a rect around the click
-    #     micro_bound = Rect.from_center(
-    #         (0.0001,0.0001),
-    #         x,
-    #         y
-    #     )
-    #     # TODO: hierarchial delegation
-    #     # find the smallest rect that encloses this
-    #     enclosing = min(
-    #         ((rect, cont) for rect, cont in self.controls.values() if micro_bound in rect),
-    #         key=lambda x: x[0].area,
-    #     )
-    #     return enclosing
-
-    def __getitem__(self, key):
-        return self.controls[key]
-
-    def send(self, move: Move):
-        raise NotImplementedError
-
-    # def draw(self, *kwargs):
-    #     for control in self.controls.values():
-    #         control.draw(kwargs[control.req])
-
-    def kill(self):
-        pass
+        ...

@@ -4,8 +4,9 @@ Defines MoveGenerator, which yields moves from a file, socket, console or AI; an
 """
 
 
-from typing import Iterator, TextIO
+from typing import Protocol, TextIO, Iterable, Tuple
 from common import *
+from common import Result
 from move import Move
 import socket
 import time
@@ -252,164 +253,45 @@ class RemoteConnection:
         return self.recv_sock.recv(1024).decode()
 
 
-class MoveSource(Iterator[Result[Move]]):
-    """A base class for all move sources.
+class MoveSource(Iterable[Result[Move]]):
+    """Provides a stream of moves from a source, such as a file, socket, console, or AI."""
+    
+    def __init__(self) -> None:
+        self.player = Player.WHITE
+        self.exhausted = False
 
-    A different one can be used for each player, allowing for different move sources for each player.
+    def get_next(self) -> Result[Move]:
+        ...
 
-    i.e.) One player could be a human, while the other is an AI, or one player could be local, while the other is a remote player.
-    """
-
-    def __init__(self, player: Player) -> None:
-        self.__source: Iterator[Move]
-        self.player = player
-        self.__closed = False
-
-    def close(self) -> None:
-        self.__closed = True
-
-    def __iter__(self) -> Iterator[Result[Move]]:
+    def __iter__(self) -> Iterable[Union[Result[Move], None]]:
         return self
 
-    def __next__(self) -> Result[Move]:
-        return Success(next(self.__source))
-
-    def __enter__(self) -> Iterator[Result[Move]]:
-        return (move for move in self)  # TODO: fix this
-
-    def __exit__(self, type, value, traceback) -> bool:
-        return True  # TODO: error handling here
+    def __next__(self) -> Union[Result[Move], None]:
+        try:
+            return self.get_next()
+        except Exception:
+            return Failure()
 
 
-class ConsoleMoveSource(MoveSource):
-    def __init__(self, player: Player) -> None:
-        super().__init__(player)
-
-    def __iter__(self) -> Iterator[Result[Move]]:
-        while not self.__closed:
-            yield Move.from_str(self.player, input())
-
-
-class AIMoveSource(MoveSource):
-    def __init__(self, player: int) -> None:
-        super().__init__(player)
-
-    def __iter__(self) -> Iterator[Result[Move]]:
-        raise NotImplementedError
-
-
-class RemoteMoveSource(MoveSource):
-    def __init__(self, player: int, connection: RemoteConnection) -> None:
-        super().__init__(player)
-        self.connection = connection
-
-    def __iter__(self) -> Iterator[Result[Move]]:
-        while not self.__closed:
-            move_str = self.connection.recv()
-            yield Move.from_str(self.player, move_str)
-
-
-class MoveGenerator:
-    """A base class for all move generators.
-
-    Contains two MoveSources, one for each player.
-
-    Implements the iterator protocol, allowing for iteration over all moves.
-    """
-
-    def __init__(self, white: MoveSource, black: MoveSource) -> None:
-        self.white_source = white
-        self.black_source = black
-        self.__closed = False
-
-    # TODO: Implement iterator protocol
-
-    def close(self) -> None:
-        self.__closed = True
-
-    def __iter__(self) -> Iterator[Result[Move]]:
-        with self.white_source as white_iter, self.black_source as black_iter:
-            while not self.__closed:
-                yield next(white_iter)
-                yield next(black_iter)
-
-
-class MoveSink:
-    """A base class for all move sinks.
-
-    Moves are sent to the sink using the send method, and handled internally.
-
-    For example, a ConsoleMoveSink would err_print the move to the console, or a RemoteMoveSink would send the move to the remote player.
-    """
-
-    def __init__(self) -> None:
-        pass
-
-    def send(self, move: Move) -> None:
-        """Takes a move and sends it to the sink.
-
-        Parameters
-        ----------
-        move : Move
-            The move to send
-        """
-        raise NotImplementedError
-
-    def dump(self) -> None:
-        """Performs any cleanup operations necessary to close the sink."""
-        pass
-
-
-class ConsoleMoveSink(MoveSink):
-    def __init__(self) -> None:
-        super().__init__()
-
-    def send(self, move: Move) -> None:
-        err_print(move.canonical())
-
-
-class RemoteMoveSink(MoveSink):
-    def __init__(self, conn: RemoteConnection) -> None:
-        super().__init__()
-        self.conn = conn
-
-    def send(self, move: Move) -> None:
-        self.conn.send(move.canonical())
-
-    def dump(self) -> None:
-        self.conn.close()
-
-    def __del__(self):
-        self.conn.close()
-
-
-class GraphicMoveSink(MoveSink):  # TODO implement this
-    ...
-    # def __new__(cls) -> Self:
-    #     # only import the graphics module if needed, as pygame has a long startup time.
-    #     # TODO: surely theres a better way to do this
-    #     from canvas import App
-    #     return super().__new__(cls)
-
-    # def __init__(self, _app:"App") -> None:
-    #     self.app = _app
-
-    # def send(self, move: Move) -> None:
-    #     self.app.send(move)
-    #     raise NotImplementedError
-
-
-class FileMoveSink(MoveSink):
+class FileSource(MoveSource):
     def __init__(self, file: TextIO) -> None:
+        self.lines = [
+            line
+            for line in map(lambda x: x.strip(), file.readlines())
+            if not line.startswith("%")
+        ]
         super().__init__()
-        self.file = file
-        self.__tmp = ""
 
-    def send(self, move: Move) -> None:
-        self.__tmp += f"{move.canonical()}\n"
+    @classmethod
+    def from_file_path(cls, file_path: str) -> "FileSource":
+        """Create a FileSource from a file path."""
+        return FileSource(open(file_path, "r"))
 
-    def dump(self) -> None:
-        self.file.write(self.__tmp)
-
-    def __del__(self):
-        self.file.close()
+    def get_next(self) -> Result[Move]:
+        try:
+            new_move = Move.from_str(self.player, self.lines.pop(0))
+            self.player = self.player.opponent()
+            return new_move
+        except IndexError:
+            self.exhausted = True
+            return Success(None)

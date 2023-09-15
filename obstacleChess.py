@@ -6,6 +6,7 @@ Function and method docstrings done in numpy style.
 import sys
 import game, board
 from common import *
+from movehandler import FileSource
 
 
 def main():
@@ -27,17 +28,17 @@ def main():
     # check for empty file:
     if not file_contents:
         # If empty, error on first tile and return
-        err_print(f"ERROR: {Error.ILLEGAL_BOARD % algebraic(0, 0)}")
+        err_print(f"ERROR: {Error.ILLEGAL_BOARD % 'a1'}")
         return
 
     # Attempt to create a board
-    start_board = board.Board.from_strs(file_contents)
-    if isinstance(start_board, Failure):
+    start_board_res = board.Board.from_strs(file_contents)
+    if isinstance(start_board_res, Failure):
         # If the board creation failed, notify and early return
-        err_print(f"ERROR: {start_board.unwrap()}")
+        err_print(f"ERROR: {start_board_res.unwrap()}")
         return
     # Board creation passed, unwrap result
-    start_board = start_board.unwrap()
+    start_board = start_board_res.unwrap()
 
     # instantiate the game
     game_result = game.Game.from_board(start_board)
@@ -48,14 +49,18 @@ def main():
 
     # if a game file path was provided, read it in
     if game_file_path:
-        with open(game_file_path, "r") as game_file:
-            raw_game_contents = game_file.readlines()
-            current_game.play_move_strs(raw_game_contents)
-    
+        source = FileSource.from_file_path(game_file_path)
+        current_game.set_move_source(source)
+        play_res = current_game.play()
+        # check if the game ended in an error
+        if isinstance(play_res, Failure):
+            err_print(f"ERROR: {play_res.unwrap()}")
+            return
+
     # open output file
     with open(output_file_path, "w") as output_file:
         # dump the board to the output file
-        current_game.dump_board(stream=output_file)
+        current_game.dump_board(file=output_file)
 
 
 if __name__ == "__main__":

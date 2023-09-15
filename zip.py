@@ -1,7 +1,7 @@
 import zipfile, os
 
 print("Packing...\n")
-skips = ["zip.py"]
+skips = ["zip.py", "tester.py"]
 with zipfile.ZipFile("obstacleChess.zip", mode="w") as package_zip:
     for filename in [
         potential
