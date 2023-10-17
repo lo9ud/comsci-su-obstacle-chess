@@ -72,13 +72,16 @@ def lzip(*args, set_l=None, default=None):
     set_l = set_l or max(map(len, args))
 
     if default is None:
-        _default = lambda x: None
+        def _default(x):
+            return None
     elif callable(default):
         _default = default
     elif isinstance(default, (tuple, list)):
-        _default = lambda x: default[x % set_l]
+        def _default(x):
+            return default[x % set_l]
     else:
-        _default = lambda x: default
+        def _default(x):
+            return default
 
     return [
         tuple(a[i] if i < len(a) else _default(i) for a in args) for i in range(set_l)
@@ -213,21 +216,21 @@ else:
             if (
                 valid := all(
                     [
-                        os.path.exists(os.path.join(location, "moves.game")),
+                        moves := os.path.exists(os.path.join(location, "moves.game")) or "moves",
                         any(
                             [
-                                os.path.exists(os.path.join(location, "output.board")),
-                                os.path.exists(os.path.join(location, "stderr.output")),
+                                outboard := os.path.exists(os.path.join(location, "output.board")) or "board",
+                                stderr := os.path.exists(os.path.join(location, "stderr.output")) or "stderr",
                             ]
                         ),
-                        os.path.exists(os.path.join(location, "initial.board")),
-                        os.path.exists(os.path.join(location, "stdout.output")),
+                        initial := os.path.exists(os.path.join(location, "initial.board")) or "initial",
+                        stdout := os.path.exists(os.path.join(location, "stdout.output")) or "stdout",
                     ]
                 )
             )
             else bcolors.FAIL
         )
-        annotation = location if valid else "Testcase not valid"
+        annotation = location if valid else f"Testcase not valid ({', '.join([a for a in [moves, stderr, outboard, initial, stdout] if isinstance(a,str)])})"
         if loud >= 2 or not valid:
             print(
                 f"  -: {testcase_name_color}{testcase_name}{bcolors.ENDC} ".ljust(

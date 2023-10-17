@@ -2,7 +2,7 @@
 """
 import enum
 import sys
-from typing import Callable, Iterable, List, TypeVar, Generic, Iterator, Any, Union
+from typing import Callable, List, TypeVar, Generic, Iterator, Any
 
 
 def err_print(_s):
@@ -23,6 +23,11 @@ class Position:
     def file(self) -> int:
         """Vertical position on the board, from 0 to 7"""
         return self.y
+    
+    @classmethod
+    def all(cls):
+        """Returns a list of all positions on the board"""
+        return [Position(x, y) for x in range(8) for y in range(8)]
 
     def __add__(self, other: "Position") -> "Position":
         if isinstance(other, Position):
@@ -39,10 +44,12 @@ class Position:
         yield self.y
 
     def __eq__(self, other: "Position") -> bool:
-        return self.x == other.x and self.y == other.y
+        if isinstance(other, Position):
+            return self.x == other.x and self.y == other.y
+        return super().__eq__(other)
 
     def __sub__(self, other: "Position") -> "Position":
-        return Position(other.x - self.x, other.y - self.y)
+        return Position(self.x - other.x, self.y - other.y)
     
     def norm(self) -> "Position":
         """Normalizes a position offset such that both components are either 1, 0 or -1"""
@@ -118,6 +125,32 @@ class Position:
 P = Position
 
 
+
+class GameSignal(enum.Flag):
+    """Signals from the game providing information about the game state."""
+    
+    MOVE = enum.auto()
+    """Moved a piece"""
+    PROMOTE = enum.auto()
+    """Promoted a pawn"""
+    CASTLE = enum.auto()
+    """Castled a king"""
+    THREEFOLD_AVAILABLE = enum.auto()
+    """Threefold repetition is available"""
+    FIFTY_AVAILABLE = enum.auto()
+    """Fifty-move rule is available"""
+    CHECK = enum.auto()
+    """Player is in check"""
+    CHECKMATE = enum.auto()
+    """Player is checkmated"""
+    STALEMATE = enum.auto()
+    """Game is at stalemate"""
+    ILLEGAL_MOVE = enum.auto()
+    """Move is illegal"""
+    MINE_DETONATION = enum.auto()
+    """A mine has detonated"""
+
+
 class Error:
     """Error messages as an enum."""
 
@@ -132,15 +165,15 @@ class Error:
 class Info:
     """Informational messages as an enum."""
 
-    CHECK = "check"
+    CHECK = "INFO: check"
     """Player in check"""
-    CHECKMATE = "checkmate"
+    CHECKMATE = "INFO: checkmate"
     """Player checkmated"""
-    STALEMATE = "stalemate"
+    STALEMATE = "INFO: stalemate"
     """Game at stalemate"""
-    DRAW_FIFTY = "draw due to fifty moves"
+    DRAW_FIFTY = "INFO: draw due to fifty moves"
     """Game drawn due to fifty-move rule"""
-    DRAW_THREEFOLD = "draw due to threefold repetition"
+    DRAW_THREEFOLD = "INFO: draw due to threefold repetition"
     """Game drawn due to threefold-repetition"""
 
 
@@ -245,6 +278,27 @@ class Wall(enum.Flag):
             return (Wall.EAST, Wall.WEST) if x2 > x1 else (Wall.WEST, Wall.EAST)
         else:
             return (Wall(0), Wall(0))
+
+
+    def blocking(self, pos) -> Position:
+        """Returns the position that this wall blocks
+
+        Args:
+            pos (Position): The position
+
+        Returns:
+            Position: The blocked position
+        """
+        if self == Wall.NORTH:
+            return pos + P(0, 1)
+        elif self == Wall.SOUTH:
+            return pos + P(0, -1)
+        elif self == Wall.EAST:
+            return pos + P(1, 0)
+        elif self == Wall.WEST:
+            return pos + P(-1, 0)
+        else:
+            raise ValueError("Invalid wall")
 
     def alternate(self) -> "Wall":
         """Returns the opposite wall

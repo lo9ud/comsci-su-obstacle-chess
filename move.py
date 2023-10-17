@@ -1,6 +1,6 @@
+from typing import Union
 from common import *
 from piece import Piece
-from board import Wall
 import re
 
 
@@ -9,6 +9,7 @@ class Move:
 
     Stores the move's origin and destination, and provides methods for transforming it into several representations
     """
+
     type_index = 1
     std_move_re = re.compile(r"\w\d-\w\d(=\w)?")
     castle_re = re.compile(r"0(-0){1,2}")
@@ -57,94 +58,16 @@ class Move:
             _from = Position.from_str(string[1:3])
             # west wall
             if wall == "|":
-                _to = _from + P(-1, 0)
+                # _to = _from + P(-1, 0)
+                wall_type = Wall.WEST
             else:  # wall == "_"
-                _to = _from + P(0, 1)
-            return Success(PlaceWall(player, _from, _to))
+                # _to = _from + P(0, 1)
+                wall_type = Wall.SOUTH
+            return Success(PlaceWall(player, _from, wall_type))
         elif string == "...":
             return Success(NullMove())
         return Failure(Error.ILLEGAL_MOVE % string)
 
-    @classmethod
-    def from_bytes(cls,_data:bytes) -> Result["Move"]:
-        """Turns a bytes into a Move.
-
-        Parameters
-        ----------
-        data : bytes
-            The bytes to transform
-
-        Returns
-        -------
-        Move
-            The move described by those bytes
-        """
-        data = int(_data)
-        
-        player_mask = 1<<15
-        type_mask = 7<<12
-        origin_mask = 511<<6
-        destination_mask = 511
-        
-        player = Player.WHITE if data & player_mask else Player.BLACK
-        _type = (data & type_mask) >> 12
-        _origin = (data & origin_mask) >> 6
-        _destination = data & destination_mask
-        
-        origin = Position(_origin >> 3, _origin & 7)
-        destination = Position(_destination >> 3, _destination & 7)
-        
-        if _type == 0:
-            return Success(NullMove(player, origin, destination))
-        elif _type == 1:
-            return Success(Move(player, origin, destination))
-        elif _type == 2:
-            return Success(PlaceWall(player, origin, destination))
-        elif _type == 3:
-            return Success(PlaceMine(player, origin))
-        elif _type == 4:
-            return Success(PlaceTrapdoor(player, origin))
-        elif _type == 5:
-            return Success(Promotion(player, origin, destination, Piece))
-        elif _type == 6:
-            return Success(QueenCastle(player))
-        elif _type == 7:
-            return Success(KingCastle(player))
-        else:
-            return Failure()
-        
-        
-    
-    @property
-    def bytes(self) -> bytes:
-        """The bytes representation of a Move
-
-        Returns
-        -------
-        bytes
-            The bytes representation of a Move
-        """
-        # BIT FORMAT - length 21
-        # [player|1][type|3][origin|6][destination|6][data|5][chksum|1]
-        # player - 1 bit where 1 is white and 0 is black
-        # type - 3 bits where 0 is null, 1 is move, 2 is wall, 3 is mine, 4 is trapdoor, 5 is promotion, 6 is queen castle, 7 is king castle
-        # origin - 6 bits where the first 3 bits are the x coordinate and the last 3 bits are the y coordinate
-        # destination - 6 bits where the first 3 bits are the x coordinate and the last 3 bits are the y coordinate
-        # chksum - 1 bit where the bit is the xor of all the other bits
-        base = 0
-        base |= self.player.value << 20
-        base |= self.type_index << 17
-        base |= self.origin.x << 14
-        base |= self.origin.y << 11
-        base |= self.destination.x << 8
-        base |= self.destination.y << 5
-        
-        checksum = 0
-        for i in range(16):
-            checksum ^= (base >> i) & 1
-        base |= checksum & 1
-        return base.to_bytes(2, "big")
-    
     def canonical(self) -> str:
         """Returns the move in canonical notation.
 
@@ -170,10 +93,11 @@ class Move:
     def __hash__(self) -> int:
         return hash((self.player.value, self.origin, self.destination))
 
-
 class NullMove(Move):
     """Defines the null move `...`, which is used to represent a partially played game where the last played move was white's."""
+
     type_index = 0
+
     def __init__(
         self,
         player: Player = Player.WHITE,
@@ -191,23 +115,25 @@ class PlaceWall(Move):
 
     The wall is placed between the two coordinates, which must be adjacent and not diagonal.
     """
+
     type_index = 2
-    def __init__(self, player: Player, origin: Position, destination: Position) -> None:
-        super().__init__(player, origin, destination)
+
+    def __init__(self, player: Player, origin: Position, wall) -> None:
+        super().__init__(player, origin, origin)
+        self.wall = wall
 
     def canonical(self) -> str:
         # TODO: Implement the fact the only south/west walls are allowed
-        node_wall = Wall.get_wall_direction(self.origin, self.destination)
-        if node_wall == Wall.SOUTH:
+        if self.wall & Wall.SOUTH:
             return f"_{self.origin.canonical()}"
-        elif node_wall == Wall.WEST:
+        elif self.wall & Wall.WEST:
             return f"|{self.origin.canonical()}"
-        else:
-            raise ValueError
+        
 
 
 class PlaceMine(Move):
     type_index = 3
+
     def __init__(self, player: Player, origin: Position) -> None:
         super().__init__(player, origin, origin)
 
@@ -217,6 +143,7 @@ class PlaceMine(Move):
 
 class PlaceTrapdoor(Move):
     type_index = 4
+
     def __init__(self, player: Player, origin: Position) -> None:
         super().__init__(player, origin, origin)
 
@@ -229,7 +156,9 @@ class Promotion(Move):
 
     The pawn is promoted to the piece specified by the promotion.
     """
+
     type_index = 5
+
     def __init__(
         self,
         player: Player,
@@ -243,8 +172,38 @@ class Promotion(Move):
     def canonical(self) -> str:
         return f"{self.origin.canonical()}-{self.destination.canonical()}={self.promotion(self.player).canonical()}"
 
+    @classmethod
+    def from_semi(cls, semi:"SemiPromotion", promotion_class:Piece):
+        return cls(semi.player, semi.origin, semi.destination, promotion_class)
 
-class Castle(Move):  # TODO: Implement castling
+class SemiPromotion(Move):
+    """Represents a pawn promotion in the game.
+
+    Does not specify the piece to which the pawn is promoted.
+    """
+
+    def __init__(
+        self,
+        player: Player,
+        origin: Position,
+        destination: Position,
+    ) -> None:
+        super().__init__(player, origin, destination)
+
+    def __eq__(self, other: Union[Promotion, "SemiPromotion"]) -> bool:
+        if isinstance(other, Promotion):
+            return (
+                self.player == other.player
+                and self.origin == other.origin
+                and self.destination == other.destination
+            )
+        return super().__eq__(other)
+
+    def canonical(self) -> str:
+        return f"{self.origin.canonical()}-{self.destination.canonical()}=?"
+
+
+class Castle(Move):
     """Represents castling.
 
     This class holds the common logic for castling, and the subclasses implement the specifics.
@@ -278,13 +237,14 @@ class Castle(Move):  # TODO: Implement castling
 
 class QueenCastle(Castle):
     type_index = 6
+
     def __init__(self, player: Player) -> None:
         destination = P(2, int(3.6 - 3.5 * player.value))
         super().__init__(player, destination)
 
     def rook_move(self) -> Move:
         rook_origin = P(0, self.origin.y)
-        rook_destination = P(2, self.origin.y)
+        rook_destination = P(3, self.origin.y)
         return Move(self.player, rook_origin, rook_destination)
 
     def canonical(self) -> str:
@@ -293,6 +253,7 @@ class QueenCastle(Castle):
 
 class KingCastle(Castle):
     type_index = 7
+
     def __init__(self, player: Player) -> None:
         destination = P(6, int(3.6 - 3.5 * player.value))
         super().__init__(player, destination)

@@ -51,7 +51,7 @@ def main():
     if game_file_path:
         source = FileSource.from_file_path(game_file_path)
         current_game.set_move_source(source)
-        play_res = current_game.play()
+        play_res = current_game.play_all()
         # check if the game ended in an error
         if isinstance(play_res, Failure):
             err_print(f"ERROR: {play_res.unwrap()}")

@@ -1,21 +1,24 @@
 """Classes for representing the board state and the board itself."""
 
+import re
+from copy import deepcopy
 from typing import Dict, Iterator, List, Tuple, Union, overload
-from piece import Piece, Pawn, Knight, Bishop, Rook, Queen, King
+
+
 from common import *
 from move import (
+    Castle,
+    KingCastle,
     Move,
     NullMove,
     PlaceMine,
     PlaceTrapdoor,
     PlaceWall,
-    Castle,
-    KingCastle,
     Promotion,
     QueenCastle,
+    SemiPromotion,
 )
-from copy import deepcopy
-import re
+from piece import Bishop, King, Knight, Pawn, Piece, Queen, Rook
 
 
 class BoardNode:
@@ -279,35 +282,61 @@ class Board:
         BoardState.standard_state().canonical(),  # standard state
     ]
 
+    empty_board_str = [
+        "........",
+        "........",
+        "........",
+        "........",
+        "........",
+        "........",
+        "........",
+        "........",
+        BoardState.standard_state().canonical(),  # standard state
+    ]
+
     ############
     #  Dunder  #
     ############
-    
-    def __init__(self, board: list, state: BoardState, initial_moves: int, turn: int) -> None:
+
+    def __init__(
+        self,
+        board: list,
+        state: BoardState,
+        initial_moves: Dict[Player, Dict[str, int]],
+        turn: int,
+    ) -> None:
         # The boards nodes, as a 2D array
-        self._nodes: list = board
+        self.nodes: List[List[BoardNode]] = board
         """The tiles on the board"""
         self.state: BoardState = state
         """The state of the board"""
-        self.initial_moves = initial_moves
-        """The number of initial moves allowed (i.e. the number of trap placements remaining)"""
         self.turn = turn
         """Which turn this board is on"""
+        # determine the number of obstacles (either 0 or 1)
+        self.initial_moves = initial_moves
+        """The number of initial moves allowed (i.e. the number of trap placements remaining)"""
+        self.mine_detonated = False
+        """Whether this board was the result of a mine detonation"""
+        
         # Ensure that the walls are normalised (i.e. that each wall corresponds to a wall on the opposite side of the adjacent node)
         self.normalise_walls()
 
     def __getitem__(self, pos: Position) -> BoardNode:
         """Returns the node at the given coordinates."""
-        return self._nodes[pos.file][pos.rank]
+        return self.nodes[pos.file][pos.rank]
 
     def __setitem__(self, pos: Position, value: BoardNode):
         """Sets the node at the given index to the given value."""
-        self._nodes[pos.file][pos.rank] = value
+        print(f"Setting {pos.canonical()} to {value}")
+        self.nodes[pos.file][pos.rank] = value
 
-    def __iter__(self) -> Iterator[list]:
+    def __iter__(self) -> List[List[BoardNode]]:
         """Iterates over rows of the boards nodes."""
-        yield from self._nodes
+        yield from self.nodes
         return StopIteration()
+
+    def __len__(self) -> int:
+        return len(self.nodes)
 
     def __repr__(self) -> str:
         return f"Board(player:{self.state.player.name})"
@@ -317,12 +346,14 @@ class Board:
 
     def copy(self) -> "Board":
         """Returns a copy of the board."""
-        return deepcopy(self)
-    
+        return Board(
+            deepcopy(self.nodes), self.state.copy(), self.initial_moves, self.turn
+        )
+
     ############
     #   Info   #
     ############
-    
+
     def canonical(self) -> str:
         """Returns a string representation of the board in canonical form.
 
@@ -330,39 +361,53 @@ class Board:
 
         """
         row_strings = []
-        for row in self._nodes:
+        for row in self.nodes:
             row_string = "".join(node.canonical() for node in row)
             row_strings.append(row_string)
         return "\n".join(row_strings + [self.state.canonical()])
 
     @overload
-    def in_check(self) -> Union[Player, None]: ...
+    def in_check(self) -> Union[Player, None]:
+        ...
+
     @overload
-    def in_check(self, player: Player) -> bool: ...
-    def in_check(self, player = None):
+    def in_check(self, player: Player) -> bool:
+        ...
+
+    def in_check(self, player=None):
         """Determines if any player is in check
 
         Arguments
         ----------
         player : Player, optional
             The player to check for, if None, checks for any player, by default None
-        
+
         Returns
         -------
         Player|None
             The player in check, if any, or None
         """
+        in_check = []
         for owner, king_pos in self.get_kings_pos().items():
-            if k:=self.being_attacked_at(king_pos, owner.opponent()):
-                return owner == player if player else owner
-        return player if player is None else False
-    
-    
+            if k := self.being_attacked_at(king_pos, owner.opponent()):
+                in_check.append(owner)
+                continue
+        if player is None:
+            return in_check[0] if len(in_check) > 0 else None
+        else:
+            return player in in_check
+
     @overload
-    def checkmate(self) -> Union[Player, None]: ...
+    def checkmate(self) -> Union[Player, None]:
+        ...
+
     @overload
-    def checkmate(self, player:Player) -> bool: ...
-    def checkmate(self, player:Union[Player, None] = None) -> Union[Player, None, bool]: #TODO
+    def checkmate(self, player: Player) -> bool:
+        ...
+
+    def checkmate(
+        self, player: Union[Player, None] = None
+    ) -> Union[Player, None, bool]:  # TODO
         """Determines if any player is in checkmate
 
         Returns
@@ -375,14 +420,13 @@ class Board:
         # if there is no king in check, return None
         if player is None:
             return None if player is None else False
-        
+
         king_pos = self.get_kings_pos()[player]
-        
-        
+
         # pop the king out of the board so that it doesn't interfere with the check for check
-        tmp = self[king_pos].contents
+        popped_king = self[king_pos].contents
         self[king_pos].contents = None
-        
+
         # check if the king can move out of check
         for neighbour in self.get_neighbours(king_pos):
             target = self[neighbour].contents
@@ -390,26 +434,32 @@ class Board:
             if self.being_attacked_at(neighbour, player.opponent()):
                 continue
             # check that the king is not moving into a piece of the same colour
-            if target is None or target.owner == player:
+            if target is not None and target.owner == player:
                 continue
             # if the king can move out of check, return None
+            # put the king back
+            self[king_pos].contents = popped_king
             return None
         # put the king back
-        self[king_pos].contents = tmp
-        
+        self[king_pos].contents = popped_king
+
         # king cannot move out of check, check if any pieces can block the check
         attacking_positions = self.being_attacked_at(king_pos, player.opponent())
         # check if a wall can block the check
         if self.state.walls[player] > 0 and len(attacking_positions) == 1:
             return None
-        
+
         for attacker in attacking_positions:
             # get the line between the attacker and the king
             line = self.get_line(attacker, (king_pos - attacker).norm())
             # get the run of the line
             run = self.get_run(line)
             # get all the pieces belonging to the player on the board
-            pieces = [pos for pos in run if (inner:=self[pos].contents) is not None and inner.owner == player]
+            pieces = [
+                pos
+                for pos in run
+                if (inner := self[pos].contents) is not None and inner.owner == player
+            ]
             # check if any pieces can block the run
             # for each piece
             for piece in pieces:
@@ -423,7 +473,7 @@ class Board:
                         return None
         # player is in checkmate
         return player or True
-        
+
     def stalemate(self) -> Union[Player, None]:
         """Returns whether the game is in stalemate
 
@@ -434,17 +484,17 @@ class Board:
         Union[Player, None]
             The player in stalemate, if any, or None
         """
-        
+
         # check if the player has any valid moves
         # the list of playesr that need to be checked
         players = [Player.WHITE, Player.BLACK]
-        for y,row in enumerate(self):
-            for x,node in enumerate(row):
+        for y, row in enumerate(self):
+            for x, node in enumerate(row):
                 # check that the node is not empty, and that the piece belongs to a player that has not already been checked
                 if node.contents is None or node.contents.owner not in players:
                     continue
                 # check if the piece has any valid moves
-                if len(self.get_moves(P(x,y))) > 0:
+                if len(self.get_moves(P(x, y))) > 0:
                     # if so, remove the player from the list
                     players.remove(node.contents.owner)
                     if not players:
@@ -459,11 +509,13 @@ class Board:
         """Determines whether the given position is on the board."""
         return 0 <= position.x < 8 and 0 <= position.y < 8
 
-    def being_attacked_at(self, position: Position, attacking_player: Player) -> List[Position]:
+    def being_attacked_at(
+        self, position: Position, attacking_player: Player
+    ) -> List[Position]:
         """Check whether a position is being attacked by a piece belonging to `attacking_player.
 
         Returns a list of the positions of the pieces attacking the position.
-        
+
         Parameters
         ----------
         position: Position
@@ -476,55 +528,91 @@ class Board:
         List[Position]
             The attacking positions.
         """
-        def _get_attacker(run: List[Position], pieces:Tuple) -> List[Position]:
-            for pos in run:
+
+        def _get_attacker(run: List[Position], pieces: Tuple) -> List[Position]:
+            for pos in run[
+                1:
+            ]:  # slicing to avoid the first position, which is the position being checked
                 opp = self[pos].contents
-                if opp is None: # empty node, keep going
+                if opp is None:  # empty node, keep going
                     continue
-                elif opp.owner == attacking_player and isinstance(opp, pieces): # enemy piece, stop as it blocks the run
+                elif opp.owner == attacking_player and isinstance(
+                    opp, pieces
+                ):  # enemy piece, stop as it blocks the run
                     return [pos]
-                else: # friendly piece, stop as it blocks the run
+                else:  # friendly piece, stop as it blocks the run
                     break
             return []
-        
-        positions:List[Position] = []
+
+        ###############################################
+        # TODO: apparently pieces are being attacked through walls. love that for them. kinda unhelpful tho.
+        # reproduce on 000072_random.board when the black rook on b5 attacks the white king on b8 through b8's north wall
+        ###############################################
+
+        positions: List[Position] = []
         # immediate neighbours
         neighbours = self.get_neighbours(position)
         for neighbour in neighbours:
             target = self[neighbour].contents
             # check for kings
-            if (
-                isinstance(target, King)
-                and target.owner == attacking_player
-            ):
+            if isinstance(target, King) and target.owner == attacking_player:
                 positions.append(neighbour)
             # check for pawns
-            if (
-                isinstance(target, Pawn)
-                and target.owner == attacking_player
-            ):
+            if isinstance(target, Pawn) and target.owner == attacking_player:
                 delta = neighbour - position
                 # check that the pawn is attacking from the correct direction TODO: confirm logic here is correct
-                if target.owner.value * delta.y == 1 and abs(delta.x) == 1:
+                if target.owner.value * delta.y == -1 and abs(delta.x) == 1:
                     positions.append(neighbour)
 
-        straights:List[List[Position]] = []
+        straights: List[List[Position]] = []
         # vertical and horizontal lines
-        straights.append(self.get_line(position, P(1, 0), allow_pieces = attacking_player))
-        straights.append(self.get_line(position, P(-1, 0), allow_pieces = attacking_player))
-        straights.append(self.get_line(position, P(0, 1), allow_pieces = attacking_player))
-        straights.append(self.get_line(position, P(0, -1), allow_pieces = attacking_player))
+        straights.append(
+            self.get_run(
+                self.get_line(position, P(1, 0), allow_pieces=attacking_player)
+            )
+        )
+        straights.append(
+            self.get_run(
+                self.get_line(position, P(-1, 0), allow_pieces=attacking_player)
+            )
+        )
+        straights.append(
+            self.get_run(
+                self.get_line(position, P(0, 1), allow_pieces=attacking_player)
+            )
+        )
+        straights.append(
+            self.get_run(
+                self.get_line(position, P(0, -1), allow_pieces=attacking_player)
+            )
+        )
         for straight in straights:
             positions.extend(_get_attacker(straight, (Queen, Rook)))
 
         diags = []
         # diagonal lines
-        diags.append(self.get_line(position, P(1, 1), allow_pieces = attacking_player))
-        diags.append(self.get_line(position, P(-1, -1), allow_pieces = attacking_player))
-        diags.append(self.get_line(position, P(1, -1), allow_pieces = attacking_player))
-        diags.append(self.get_line(position, P(-1, 1), allow_pieces = attacking_player))
+        diags.append(
+            self.get_run(
+                self.get_line(position, P(1, 1), allow_pieces=attacking_player)
+            )
+        )
+        diags.append(
+            self.get_run(
+                self.get_line(position, P(-1, -1), allow_pieces=attacking_player)
+            )
+        )
+        diags.append(
+            self.get_run(
+                self.get_line(position, P(1, -1), allow_pieces=attacking_player)
+            )
+        )
+        diags.append(
+            self.get_run(
+                self.get_line(position, P(-1, 1), allow_pieces=attacking_player)
+            )
+        )
         for diag in diags:
-            positions.extend(_get_attacker(diag,(Queen, Bishop)))
+            positions.extend(_get_attacker(diag, (Queen, Bishop)))
 
         bends = []
         # knight moves
@@ -534,24 +622,21 @@ class Board:
                 bends.append(pot_pos)
         for bend in bends:
             target = self[bend].contents
-            if (
-                isinstance(target, Knight)
-                and target.owner == attacking_player
-            ):
+            if isinstance(target, Knight) and target.owner == attacking_player:
                 positions.append(bend)
 
         return positions
 
     def get_kings_pos(self) -> Dict[Player, Position]:
-        kings:dict = {}
-        for y,row in enumerate(self):
-            for x,node in enumerate(row):
+        kings: dict = {}
+        for y, row in enumerate(self):
+            for x, node in enumerate(row):
                 inner = node.contents
                 if isinstance(inner, King):
-                    kings[inner.owner] = P(x,y)
+                    kings[inner.owner] = P(x, y)
         return kings
-    
-    def get_moves(self, position: Position) -> List[Position]:
+
+    def get_moves(self, position: Position, strict=False) -> List[Position]:
         """Returns a list of all the moves a piece at the given position could make.
 
         Does not take context into account (i.e. whether the move would put the player in check etc.).
@@ -570,103 +655,215 @@ class Board:
         if actor is None:
             return []
         player = actor.owner
-        potentials = []
-        def get_potentials(pos: Position, directions: List[Position]):
+        # TODO: implement strict - only allow moves that follow rules etc...
+        # if the piece is not owned by the current player, return an empty list
+        if strict and player != self.state.player:
+            return []
+
+        potentials: List[Move] = []
+
+        def get_potentials(pos: Position, directions: List[Move]):
             positions = []
             runs = {}
             for direction in directions:
-                runs[direction] = []
-                line = self.get_line(pos, direction)
-                if not line: # skip zero length lines
-                    continue
-                elif len(line) > 1: # if the line is longer than 1, get the run
-                    runs[direction].extend(self.get_run(line))
-                elif not self.wall_blocked(pos, direction): # if the line is 1 long, check if that position is blocked by a wall
-                    runs[direction].extend(line)
-                    
-            
+                runs[direction] = self.get_line(pos, direction)
+                # runs[direction] = []
+                # line = self.get_line(pos, direction)
+                # if not line: # skip zero length lines
+                #     continue
+                # elif len(line) > 1: # if the line is longer than 1, get the run
+                #     runs[direction].extend(self.get_run(line))
+                # elif not self.wall_blocked(pos, direction): # if the line is 1 long, check if that position is blocked by a wall
+                #     runs[direction].extend(line)
+
             for direction, run in runs.items():
-                for pos in run:
-                    opp = self[pos].contents
-                    if opp is None:
-                        positions.append(pos)
-                    elif opp.owner != player:
-                        positions.append(pos)
-                        break
+                for i, (posA, posB) in enumerate(zip(run, run[1:])):
+                    target = self[posB].contents
+                    if not self.wall_blocked(posA, posB - posA):
+                        if target and target.owner == player:
+                            break
+                        elif target:
+                            positions.append(posB)
+                            break
+                        else:
+                            positions.append(posB)
                     else:
                         break
+                # for pos in run:
+                #     opp = self[pos].contents
+                #     if opp is None:
+                #         positions.append(pos)
+                #     elif opp.owner != player:
+                #         positions.append(pos)
+                #         break
+                #     else:
+                #         break
             return positions
+
         ###########################################################
         #                        PAWNS                            #
         ###########################################################
 
         if isinstance(actor, Pawn):
+            # determine whether this pawn will promote if it moves forwards
+            movetype = (
+                SemiPromotion if position.y == int(3.6 + 2.5 * player.value) else Move
+            )
             # single move forward
             front = position + P(0, player.value)
-            if Board.on_board(front) and self[front].contents is None:
-                potentials.append(front)
+            if (
+                Board.on_board(front)
+                and self[front].contents is None
+                and not self.wall_blocked(position, front - position)
+            ):
+                potentials.append(movetype(player, position, front))
                 # double move forward
                 dfront = position + P(0, player.value * 2)
-                if Board.on_board(dfront) and self[dfront].contents is None:
-                    potentials.append(dfront)
+                if (
+                    Board.on_board(dfront)
+                    and self[dfront].contents is None
+                    and position.y == int(3.6 - 2.5 * player.value)
+                    and not self.wall_blocked(front, dfront - front)
+                ):
+                    potentials.append(Move(player, position, dfront))
 
             # diagonal moves
-            for x_off in [P(x,0) for x in (-1, 1)]:
+            for x_off in [P(x, 0) for x in (-1, 1)]:
                 target = front + x_off
-                if Board.on_board(target):
+                if Board.on_board(target) and not self.wall_blocked(
+                    position, target - position
+                ):
                     opp = self[target].contents
                     if opp is not None and opp.owner != player:
-                        potentials.append(target)
+                        potentials.append(movetype(player, position, target))
+
+            # en passant
+            if self.state.enpassant is not None and self.state.enpassant.y == front.y:
+                for x_off in [P(x, 0) for x in (-1, 1)]:
+                    target = front + x_off
+                    if (
+                        Board.on_board(target)
+                        and target == self.state.enpassant
+                        and (
+                            self[target].contents is None
+                            or self[target].contents.owner != player
+                        )
+                    ):
+                        potentials.append(Move(player, position, target))
 
         ###########################################################
         #                       KNIGHTS                           #
         ###########################################################
-        
+
         elif isinstance(actor, Knight):
             for offset in Knight.offsets:
                 pot_pos = position + offset
                 if Board.on_board(pot_pos):
                     opp = self[pot_pos].contents
                     if opp is None or opp.owner != player:
-                        potentials.append(pot_pos)
+                        potentials.append(Move(player, position, pot_pos))
 
         ###########################################################
         #                       BISHOPS                           #
         ###########################################################
-        
+
         elif isinstance(actor, Bishop):
             directions = [P(x, y) for x in (-1, 1) for y in (-1, 1)]
-            potentials = get_potentials(position, directions)
-        
+            potential_targets = get_potentials(position, directions)
+            potentials.extend(
+                Move(player, position, target) for target in potential_targets
+            )
+
         ###########################################################
         #                        ROOKS                            #
         ###########################################################
-        
+
         elif isinstance(actor, Rook):
-            directions = [P(x, y) for x in (-1, 0, 1) for y in (-1, 0, 1) if abs(x) != abs(y)]
-            potentials = get_potentials(position, directions)
-        
+            directions = [
+                P(x, y) for x in (-1, 0, 1) for y in (-1, 0, 1) if abs(x) != abs(y)
+            ]
+            potential_targets = get_potentials(position, directions)
+            potentials.extend(
+                Move(player, position, target) for target in potential_targets
+            )
+
         ###########################################################
         #                        QUEENS                           #
         ###########################################################
-        
+
         elif isinstance(actor, Queen):
-            directions = [P(x, y) for x in (-1, 0, 1) for y in (-1, 0, 1) if (x,y) != (0,0)]
-            potentials = get_potentials(position, directions)
-            
+            directions = [
+                P(x, y) for x in (-1, 0, 1) for y in (-1, 0, 1) if (x, y) != (0, 0)
+            ]
+            potential_targets = get_potentials(position, directions)
+            potentials.extend(
+                Move(player, position, target) for target in potential_targets
+            )
+
         ###########################################################
         #                         KINGS                           #
         ###########################################################
-        
+
         elif isinstance(actor, King):
             for neighbour in self.get_neighbours(position):
                 target = self[neighbour].contents
-                if target is None or target.owner != player:
-                    potentials.append(neighbour)
+                if (target is None or target.owner != player) and not self.wall_blocked(
+                    position, neighbour - position
+                ):
+                    potentials.append(Move(player, position, neighbour))
+            # remove moves that would put the king in check
+            # pop the king out of the board so that it doesn't interfere with the check for check
+            tmp = self[position].contents
+            self[position].contents = None
+            for i, move in enumerate(potentials):
+                # check if the king would be in check after the move
+                if self.being_attacked_at(move.destination, player.opponent()):
+                    potentials.pop(i)
+                    break
+            # put the king back
+            self[position].contents = tmp
+
+            # castling
+            # very long logic checks the following (in this order):
+            #   -: The player has the castling right
+            #   -: There are no walls blocking the castling
+            #   -: None of the positions between the king and the rook are being attacked
+            #   -: There are no pieces between the king and the rook
+            if self.state.castling[player]["king"] and all(
+                self[pos].contents is None
+                for pos in [position + P(1, 0), position + P(2, 0)]
+                if self.on_board(pos)
+                and not self.wall_blocked(position, pos - position)
+                and not self.being_attacked_at(pos, player.opponent())
+            ):
+                potentials.append(KingCastle(player))
+            if self.state.castling[player]["queen"] and all(
+                self[pos].contents is None
+                for pos in [
+                    position + P(-1, 0),
+                    position + P(-2, 0),
+                    position + P(-3, 0),
+                ]
+                if self.on_board(pos)
+                and not self.wall_blocked(position, pos - position)
+                and not self.being_attacked_at(pos, player.opponent())
+            ):
+                potentials.append(QueenCastle(player))
+
+        # simulate each potential move to see if it is legal
+        danger = self.in_check(player)
+        for potential in potentials[:]:
+            move_res = self.apply_move(potential)
+            if isinstance(move_res, Failure):
+                potentials.remove(potential)
+            else:
+                dummy = move_res.unwrap()
+                if dummy.in_check(player):
+                    potentials.remove(potential)
 
         # return the list of potentials
         return potentials
-    
+
     def wall_blocked(self, position: Position, direction: Position) -> bool:
         """Determines whether a wall blocks movement in the given direction from the given position.
 
@@ -689,21 +886,23 @@ class Board:
             # if the movement is off the board, it is blocked
             return True
         # check for walls
-        if direction.y == 0 and ( # horizontal movement
-            (direction.x > 0 and from_node.walls & Wall.EAST) or
-            (direction.x < 0 and from_node.walls & Wall.WEST)
-        ):
-            return True
-        elif direction.x == 0 and ( # vertical movement
-            (direction.y > 0 and from_node.walls & Wall.SOUTH) or
-            (direction.y <= 0 and from_node.walls & Wall.NORTH)
-        ):
-            return True
+        if direction.y == 0:
+            if (  # horizontal movement
+                direction.x > 0 and from_node.walls & Wall.EAST
+            ) or (direction.x < 0 and from_node.walls & Wall.WEST):
+                return True
+        elif direction.x == 0:
+            if (  # vertical movement
+                direction.y > 0 and from_node.walls & Wall.NORTH
+            ) or (direction.y < 0 and from_node.walls & Wall.SOUTH):
+                return True
 
         else:  # diagonal movement
             # get the alternate positions
             # hori neighbour, vert neighbour
-            hori_alt, vert_alt = Position(from_pos.x, to_pos.y), Position(to_pos.x, from_pos.y)
+            hori_alt, vert_alt = Position(to_pos.x, from_pos.y), Position(
+                from_pos.x, to_pos.y
+            )
             #
             #   a\   b
             #     \
@@ -712,7 +911,7 @@ class Board:
             # get the motion in terms of walls
             #        (hori wall, vert wall)
             motion = (Wall(0), Wall(0))
-            if direction.y > 0:  # South
+            if direction.y < 0:  # South
                 if direction.x > 0:  # East
                     motion = Wall.SOUTH, Wall.EAST
                 else:  # West
@@ -727,36 +926,58 @@ class Board:
             to_node = self[to_pos]
             # check for walls
             # check for from_node having both motion walls
-            if (
-                from_node.walls & motion[0]
-                and from_node.walls & motion[1]
-            ):
+            if from_node.walls & motion[0] and from_node.walls & motion[1]:
                 return True
             # from_node has horizontal motion wall, and horizontal neighbour has that same wall
-            elif (
-                from_node.walls & motion[0]
-                and self[hori_alt].walls & motion[0]
-            ):
+            elif from_node.walls & motion[0] and self[hori_alt].walls & motion[0]:
                 return True
             # from_node has vertical motion wall, and vertical neighbour has that same wall
-            elif (
-                from_node.walls & motion[1]
-                and self[vert_alt].walls & motion[1]
-            ):
+            elif from_node.walls & motion[1] and self[vert_alt].walls & motion[1]:
                 return True
             # to_node has inverses of both motion walls
-            elif (
-                to_node.walls & inv_motion[0]
-                and to_node.walls & inv_motion[1]
-            ):
+            elif to_node.walls & inv_motion[0] and to_node.walls & inv_motion[1]:
                 return True
         return False
-    
+
     ############
     #  Slicing #
     ############
-    
-    def get_line(self, origin: Position, direction: Position, allow_pieces:Union[Player, None] = None) -> List[Position]:
+
+    def get_between(self, start: Position, end: Position) -> List[Position]:
+        """Returns a list of the positions between the two given positions.
+
+        The start and end positions are not included in the list.
+
+        Parameters
+        ----------
+        start : Position
+            The start of the range.
+        end : Position
+            The end of the range.
+
+        Returns
+        -------
+        List[Position]
+            The positions between the two given positions.
+        """
+        # get the direction of the movement
+        direction = (start - end).norm()
+        # get the line between the two positions
+        line = self.get_line(start, direction)
+        # remove positions past the end
+        while line[-1] != end:
+            line.pop()
+        # remove the end position
+        line.pop()
+        # return the run of the line
+        return line
+
+    def get_line(
+        self,
+        origin: Position,
+        direction: Position,
+        allow_pieces: Union[Player, None] = None,
+    ) -> List[Position]:
         """Returns a list of the coordinates of the nodes along the given direction starting from the origin.
 
         The origin is not included in the list.
@@ -777,16 +998,16 @@ class Board:
         """
         # generate a list of the coordinates of the nodes along the line
         base = []
-        i = 1
-        while Board.on_board(pos:= origin + direction * i):
-            i+=1
+        i = 0
+        while Board.on_board(pos := origin + direction * i):
             base.append(pos)
+            i += 1
         # get the run of the line
         return base
 
     def get_run(self, positions: List[Position]) -> List[Position]:
         """Determines how far a piece could move along the given list of positions in order (i.e. that there are no walls blocking the movement).
-        
+
         Does not consider pieces blocking the movement.
 
         Parameters
@@ -799,14 +1020,16 @@ class Board:
         list[Positions]
             The run of accessible positions.
         """
+        if len(positions) < 2:
+            return positions
         run = []
         # get each pair of positions
         delta = (positions[1] - positions[0]).norm()
         for pos in positions:
+            run.append(pos)
             if self.wall_blocked(pos, delta):
                 # if the movement is blocked, return the run
                 return run
-            run.append(pos)
         # return the run
         return run
 
@@ -823,22 +1046,25 @@ class Board:
         list
             The neighbours of that position
         """
-        potential_neighbours = [Position(*x) for x in [
-            (position.x + 1, position.y),
-            (position.x - 1, position.y),
-            (position.x,     position.y + 1),
-            (position.x,     position.y - 1),
-            (position.x + 1, position.y + 1),
-            (position.x - 1, position.y - 1),
-            (position.x + 1, position.y - 1),
-            (position.x - 1, position.y + 1),
-        ]]
+        potential_neighbours = [
+            Position(*x)
+            for x in [
+                (position.x + 1, position.y),
+                (position.x - 1, position.y),
+                (position.x, position.y + 1),
+                (position.x, position.y - 1),
+                (position.x + 1, position.y + 1),
+                (position.x - 1, position.y - 1),
+                (position.x + 1, position.y - 1),
+                (position.x - 1, position.y + 1),
+            ]
+        ]
         return [node for node in potential_neighbours if self.on_board(node)]
 
     ############
     #  Strings #
     ############
-    
+
     @staticmethod
     def _board_list_transform(strs: list) -> list:
         """Transforms the board lines into a 3D array of characters,
@@ -874,7 +1100,7 @@ class Board:
                 # check that the wall is not on the west edge of the board
                 if pos.x == 0:
                     return Failure()
-            # east wall
+            # south wall
             elif modifier == "_":
                 node.walls |= Wall.SOUTH
                 # check that the wall is not on the south edge of the board
@@ -886,7 +1112,7 @@ class Board:
         return Success(None)
 
     @classmethod
-    def from_strs(cls, strings: list, _init = False) -> Result["Board"]:
+    def from_strs(cls, strings: list, _init=False) -> Result["Board"]:
         """Returns a board that is in the state described by the given list of strings.
 
         This string should not contain any comments.
@@ -914,7 +1140,8 @@ class Board:
                     if x != 8:
                         # return a Failure at the last correct node
                         return Failure(
-                            Error.ILLEGAL_BOARD % Position(min(x, len(row_list)), y).canonical()
+                            Error.ILLEGAL_BOARD
+                            % Position(min(x, len(row_list)), y).canonical()
                         )
                     # else if there are modifiers on the dummy (i.e. there are trailing modifiers)
                     elif len(board_chars) > 1:
@@ -941,7 +1168,9 @@ class Board:
                     return Failure(Error.ILLEGAL_BOARD % Position(x, y).canonical())
 
                 # Attempt to apply the modifiers to the new node
-                mod_result = cls._apply_node_modifiers(Position(x, y), new_node, board_chars[1:])
+                mod_result = cls._apply_node_modifiers(
+                    Position(x, y), new_node, board_chars[1:]
+                )
                 if isinstance(mod_result, Failure):
                     return Failure(Error.ILLEGAL_BOARD % Position(x, y).canonical())
 
@@ -957,40 +1186,70 @@ class Board:
         if len(strings) > 9:
             return Failure(Error.ILLEGAL_STATUSLINE)
 
-        return Success(cls(board, state, 4, 1))
+        initial_moves = {
+            "total": 4,
+            Player.WHITE: {"mines": _init, "trapdoors": _init},
+            Player.BLACK: {"mines": _init, "trapdoors": _init},
+        }
+        return Success(cls(board, state, initial_moves, 1))
 
     @classmethod
     def standard_board(cls) -> Result["Board"]:
         """Returns a board that is in standard starting positions."""
-        return cls.from_strs(Board.standard_board_str, _init = True)
+        return cls.from_strs(Board.standard_board_str, _init=True)
 
+    @classmethod
+    def empty_board(cls) -> Result["Board"]:
+        """Returns an empty board."""
+        return cls.from_strs(Board.empty_board_str, _init=True)
+
+    ##############
+    # Validation #
+    ##############
     def normalise_walls(self):
         """Adds the appropriate walls to each node, such that each wall corresponds to a wall on the opposite side of the adjacent node.
 
         Called automatically when the board is created, but will not fail if called multiple times.
         """
         # normalise the board walls
-        for y, row in enumerate(self._nodes):
+        for y, row in enumerate(self.nodes):
             for x, node in enumerate(row):
                 if node.walls & Wall.WEST:
                     # if this node has a west wall, the node to the west must have an east wall
-                    self._nodes[y][x - 1].walls |= Wall.EAST
+                    self.nodes[y][x - 1].walls |= Wall.EAST
 
                 if node.walls & Wall.SOUTH:
                     # if this node has a south wall, the node to the south must have a north wall
-                    self._nodes[y + 1][x].walls |= Wall.NORTH
+                    self.nodes[y - 1][x].walls |= Wall.NORTH
 
                 if node.walls & Wall.NORTH:
                     # if this node has a north wall, the node to the north must have a south wall
-                    self._nodes[y - 1][x].walls |= Wall.SOUTH
+                    self.nodes[y + 1][x].walls |= Wall.SOUTH
 
                 if node.walls & Wall.EAST:
                     # if this node has an east wall, the node to the east must have a west wall
-                    self._nodes[y][x + 1].walls |= Wall.WEST
-    
-    ##############
-    # Validation #
-    ##############
+                    self.nodes[y][x + 1].walls |= Wall.WEST
+
+    def standardise_status(self):
+        """Standardises the status of the board, such that castling rights are correct, and the current player is white."""
+        # make the current player white
+        self.state.player = Player.WHITE
+
+        # set the castling rights
+        self.state.castling = {
+            Player.WHITE: {
+                "king": self[P(4, 0)].contents is King
+                and self[P(0, 0)].contents is Rook,
+                "queen": self[P(4, 0)].contents is King
+                and self[P(7, 0)].contents is Rook,
+            },
+            Player.BLACK: {
+                "king": self[P(4, 7)].contents is King
+                and self[P(0, 7)].contents is Rook,
+                "queen": self[P(4, 7)].contents is King
+                and self[P(7, 7)].contents is Rook,
+            },
+        }
 
     def validate_move(self, move: Move) -> Result[Move]:
         """Validates the supplied move against this board, returning a Failure if the move is invalid, and a Success otherwise.
@@ -1010,90 +1269,97 @@ class Board:
             return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
         # Wall placement
-        if isinstance(move, PlaceWall):
-            # Due to the way the PlaceWall move is constructed, we can assume that the move is valid if both the origin and destination are on the board, which is checked above
-            back, front = Wall.coords_to_walls(move.origin, move.destination)
-            # check that the wall does not already exist
-            if (self[move.origin].walls & back == back) or (
-                self[move.destination].walls & front == front
-            ):
-                return Failure(Error.ILLEGAL_MOVE % move.canonical())
-
-        elif isinstance(move, PlaceMine):
-            if self.initial_moves <= 0:
-                return Failure(Error.ILLEGAL_MOVE % move.canonical())
-
-            # check that the mine does not already exist
-            if self[move.origin].mined:
+        if isinstance(move, PlaceMine):
+            # check that the player has mines remaining
+            if self.initial_moves[move.player]["mines"] <= 0:
                 return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
             # check that the mine is on the allowed rows
             if move.origin.y not in (3, 4):
                 return Failure(Error.ILLEGAL_MOVE % move.canonical())
+
         elif isinstance(move, PlaceTrapdoor):
-            # check that there are initail move remaining
-            if self.initial_moves > 0:
-                # check that the trapdoor does not already exist
-                if self[move.origin].trapdoor is not TrapdoorState.NONE:
-                    return Failure(Error.ILLEGAL_MOVE % move.canonical())
-
-                # check that the trapdoor is on the allowed rows
-                if move.origin.y not in (2, 3, 4, 5):
-                    return Failure(Error.ILLEGAL_MOVE % move.canonical())
-            else:
+            # check that the player has trapdoors remaining
+            if self.initial_moves[move.player]["trapdoors"] <= 0:
                 return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
-        elif isinstance(move, Castle):
-            # check that the king is not moving into or across check or another piece
-            pos = move.origin
-            while pos != move.destination:
-                # adjust the position
-                pos = (pos + move.delta)
-                target = self[pos]
-                if target.contents is None and not self.being_attacked_at(
-                    pos, move.player.opponent()
-                ):
-                    continue
-                return Failure(Error.ILLEGAL_MOVE % move.canonical())
-
-            # check that the player has the right to castle
-            if isinstance(move, KingCastle):
-                if not self.state.castling[self.state.player]["king"]:
-                    return Failure(Error.ILLEGAL_MOVE % move.canonical())
-            elif isinstance(move, QueenCastle):
-                if not self.state.castling[self.state.player]["queen"]:
-                    return Failure(Error.ILLEGAL_MOVE % move.canonical())
-
-        elif isinstance(move, Promotion):
-            # check that the moving piece is a pawn
-            if not isinstance(self[move.origin].contents, Pawn):
-                return Failure(Error.ILLEGAL_MOVE % move.canonical())
-
-            # check that the pawn is moving to the correct row
-            if not (
-                (move.destination.y == 0 and move.player == Player.WHITE)
-                or (move.destination.y == 7 and move.player == Player.BLACK)
-            ):
-                return Failure(Error.ILLEGAL_MOVE % move.canonical())
-
-            # check that the pawn is not promoting to a king or pawn
-            if move.promotion is King or move.promotion is Pawn:
+            # check that the trapdoor is on the allowed rows
+            if move.origin.y not in (2, 3, 4, 5):
                 return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
         elif isinstance(move, NullMove):
             # Null moves are only valid if there are initial moves remaining
-            if self.initial_moves > 0:
+            if (
+                self.initial_moves[move.player]["trapdoors"] <= 0
+                and self.initial_moves[move.player]["mines"] <= 0
+            ):
                 return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
-        elif isinstance(move, Move):
-            actor = self[move.origin].contents
-            # check that the piece is moving to a valid position
-            valid_moves = self.get_moves(move.origin)
-            if move.destination not in valid_moves:
+        else:
+            # check that an even number of initial moves have been made
+            # the values of initial_moves at this point can be 0, 2 or 4
+            if self.initial_moves["total"] % 2 != 0:
                 return Failure(Error.ILLEGAL_MOVE % move.canonical())
+            # set the initial moves to 0 for both players and both types of obstacle
+            self.initial_moves = {
+                "total": 0,
+                Player.WHITE: {"mines": 0, "trapdoors": 0},
+                Player.BLACK: {"mines": 0, "trapdoors": 0},
+            }
+            if isinstance(move, PlaceWall):
+                # Due to the way the PlaceWall move is constructed, we can assume that the move is valid if both the origin and destination are on the board, which is checked above
+                back, front = Wall.coords_to_walls(move.origin, move.destination)
+                # check that the wall does not already exist
+                if self[move.origin].walls & move.wall:
+                    return Failure(Error.ILLEGAL_MOVE % move.canonical())
+            else:
+                if move not in self.get_moves(move.origin):
+                    return Failure(move)
+                return Success(move)
+            # elif isinstance(move, Castle):
+            #     # check that the king is not moving into or across check or another piece
+            #     pos = move.origin
+            #     while pos != move.destination:
+            #         # adjust the position
+            #         pos = pos + move.delta
+            #         target = self[pos]
+            #         if target.contents is None and not self.being_attacked_at(
+            #             pos, move.player.opponent()
+            #         ):
+            #             continue
+            #         return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
+            #     # check that the player has the right to castle
+            #     if isinstance(move, KingCastle):
+            #         if not self.state.castling[self.state.player]["king"]:
+            #             return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
+            #     elif isinstance(move, QueenCastle):
+            #         if not self.state.castling[self.state.player]["queen"]:
+            #             return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
+            # elif isinstance(move, Promotion):
+            #     # check that the moving piece is a pawn
+            #     if not isinstance(self[move.origin].contents, Pawn):
+            #         return Failure(Error.ILLEGAL_MOVE % move.canonical())
+
+            #     # check that the pawn is moving to the correct row
+            #     if not (
+            #         (move.destination.y == 0 and move.player == Player.WHITE)
+            #         or (move.destination.y == 7 and move.player == Player.BLACK)
+            #     ):
+            #         return Failure(Error.ILLEGAL_MOVE % move.canonical())
+
+            #     # check that the pawn is not promoting to a king or pawn
+            #     if move.promotion is King or move.promotion is Pawn:
+            #         return Failure(Error.ILLEGAL_MOVE % move.canonical())
+
+            # elif isinstance(move, Move):
+            #     self[move.origin].contents
+            #     # check that the piece is moving to a valid position
+            #     valid_moves = self.get_moves(move.origin)
+            #     if move.destination not in valid_moves:
+            #         return Failure(Error.ILLEGAL_MOVE % move.canonical())
 
         return Success(move)
 
@@ -1121,7 +1387,7 @@ class Board:
             direction = (neighbour - pos).norm()
             if not self.wall_blocked(pos, direction):
                 self[neighbour].contents = None
-        
+
         # reset the halfmove clock
         self.state.clock = 0
 
@@ -1134,30 +1400,40 @@ class Board:
 
         # Apply the move
         piece, capture = False, False
-        if isinstance(move, PlaceWall):
-            back, front = Wall.coords_to_walls(move.origin, move.destination)
-            new_board[move.origin].walls |= back
-            new_board[move.destination].walls |= front
-
-        elif isinstance(move, PlaceMine):
+        if isinstance(move, PlaceMine):
             new_board[move.origin].mined = True
+            new_board.state.clock = 0
+            new_board.initial_moves[move.player]["mines"] -= 1
+            new_board.initial_moves["total"] -= 1
 
         elif isinstance(move, PlaceTrapdoor):
             new_board[move.origin].trapdoor = TrapdoorState.HIDDEN
+            new_board.state.clock = 0
+            new_board.initial_moves[move.player]["trapdoors"] -= 1
+            new_board.initial_moves["total"] -= 1
 
-        elif isinstance(move, Castle):
-            new_board._castle(move)
+        elif isinstance(move, NullMove):
+            # decrement the initial moves counter to show that a move has been made
+            new_board.initial_moves["total"] -= 1
+        else:
+            if isinstance(move, PlaceWall):
+                new_board.state.walls[move.player] -= 1
+                new_board[move.origin].walls |= move.wall
+                new_board[move.wall.blocking(move.origin)].walls |= move.wall.alternate()
 
-        elif isinstance(move, Promotion):
-            capture = new_board._move_piece(move)
-            new_board[move.destination].contents = move.promotion(move.player)
+            elif isinstance(move, Castle):
+                new_board._castle(move)
 
-        elif isinstance(move, Move):
-            capture = new_board._move_piece(move)
+            elif isinstance(move, Promotion):
+                new_board.move_piece(move)
+                new_board[move.destination].contents = move.promotion(move.player)
+
+            elif isinstance(move, Move):
+                new_board.move_piece(move)
 
         # alternate the player
         new_board.state.player = new_board.state.player.opponent()
-        
+
         # increment the move counter
         new_board.turn += 1
 
@@ -1187,7 +1463,9 @@ class Board:
         self[move.destination].contents = king_piece
         self[rook_move.destination].contents = rook_piece
 
-    def _move_piece(self, move: Move):  # TODO: piece captures, check, checkmate, halfmoves
+    def move_piece(
+        self, move: Move
+    ):  # TODO: piece captures, check, checkmate, halfmoves
         """Private method for performing a standard move.
 
         Does not perform any validation.
@@ -1219,10 +1497,16 @@ class Board:
                     origin.x,
                     (origin.y + dest.y) // 2,
                 )  # set enpassant target
-            elif self.state.enpassant and dest == self.state.enpassant: # perform enpassant capture
-                capture_pos = Position(dest.x, origin.y) # the capture position has the same y as the origin and the same x as the destination
+            elif (
+                self.state.enpassant and dest == self.state.enpassant
+            ):  # perform enpassant capture
+                capture_pos = Position(
+                    dest.x, origin.y
+                )  # the capture position has the same y as the origin and the same x as the destination
                 capture = self[capture_pos].contents
                 self[capture_pos].contents = None
+            else:  # reset enpassant target
+                self.state.enpassant = None
         else:
             # reset enpassant target if another piece moves
             self.state.enpassant = None
@@ -1236,21 +1520,28 @@ class Board:
                     self.state.castling[piece.owner]["queen"] = False
                 elif origin.x == 7:
                     self.state.castling[piece.owner]["king"] = False
-        
+
         # move the piece
         self[dest].contents = self[origin].contents
         self[origin].contents = None
 
         dest_node = self[dest]
-        # mine detonation
+        # check for mine detonation
         if dest_node.mined:
+            # set the halfmove clock to 0
+            self.state.clock = 0
+
             self.detonate_mine(dest)
 
+            self.mine_detonated = True
+
+        # check for trapdoor opening
         if dest_node.trapdoor is not TrapdoorState.NONE:
+            # set the halfmove clock to 0
+            self.state.clock = 0
+            # open the trapdoor if it is hidden
             if dest_node.trapdoor is TrapdoorState.HIDDEN:
                 dest_node.trapdoor = TrapdoorState.OPEN
             dest_node.contents = None
 
         return capture
-    
-    

@@ -1,5 +1,5 @@
 from common import *
-from typing import Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # allows typechecking while preventing circular imports
     from move import Move

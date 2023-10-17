@@ -4,7 +4,7 @@ Defines MoveGenerator, which yields moves from a file, socket, console or AI; an
 """
 
 
-from typing import Protocol, TextIO, Iterable, Tuple
+from typing import TextIO, Iterable, Union
 from common import *
 from common import Result
 from move import Move
@@ -13,6 +13,23 @@ import time
 import struct
 from common import *
 
+class MoveQueue(list):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def push(self, move: Move) -> None:
+        super().insert(0, move)
+
+    def pull(self) -> Move:
+        return super().pop()
+    
+    def top(self):
+        """Returns the next element of the queue, without removing it.
+
+        Returns:
+            Move: The next move in the queue.
+        """
+        return self[-1]
 
 class RemoteConnection:
     host_recv_port = 50007
@@ -272,6 +289,19 @@ class MoveSource(Iterable[Result[Move]]):
         except Exception:
             return Failure()
 
+class ComposedSource(MoveSource):
+    def __init__(self, white:MoveSource, black:MoveSource) -> None:
+        self.white = white
+        self.black = black
+        super().__init__()
+
+    def get_next(self) -> Result[Move]:
+        if self.player == Player.WHITE:
+            self.player = Player.BLACK
+            return self.white.get_next()
+        else:
+            self.player = Player.WHITE
+            return self.black.get_next()
 
 class FileSource(MoveSource):
     def __init__(self, file: TextIO) -> None:
@@ -295,3 +325,12 @@ class FileSource(MoveSource):
         except IndexError:
             self.exhausted = True
             return Success(None)
+
+class QueuedMoveSource(MoveSource):
+    def __init__(self, queue: MoveQueue) -> None:
+        self.queue = queue
+        super().__init__()
+
+    def get_next(self) -> Result[Move]:
+        move = self.queue.pull()
+        return Success(move)

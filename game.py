@@ -1,4 +1,5 @@
-from typing import List, Tuple, overload
+from typing import List, overload, Union
+
 from board import Board, TrapdoorState, Wall
 from move import Move
 from common import *
@@ -8,7 +9,8 @@ from movehandler import MoveSource
 class Game:
     """Represents a game of obstacle chess.
 
-    This class is responsible for the game loop, and for handling the game state, including the board, pieces, and players.
+    This class is responsible for the game loop, and for handling the game state,
+    including the board, pieces, and players.
     """
 
     class _StackEntry:
@@ -29,6 +31,9 @@ class Game:
         def __iter__(self):
             return iter(self.__stack)
 
+        def __len__(self) -> int:
+            return len(self.__stack)
+
         def push(
             self, move: Move, board: Board
         ) -> Result["Game._StackEntry"]:  ## TODO: tuple ordering here is kinda screwey
@@ -39,17 +44,14 @@ class Game:
             return self.__stack.pop()
 
         @property
-        def boards(self) -> list:
+        def boards(self) -> List[Board]:
             """The boards in the stack, in order."""
             return [entry.board for entry in self.__stack]
 
         @property
-        def moves(self) -> list:
+        def moves(self) -> List[Move]:
             """The moves in the stack, in order."""
             return [entry.move for entry in self.__stack]
-
-        def __len__(self) -> int:
-            return len(self.__stack)
 
         @overload
         def __getitem__(self, index: int) -> "Game._StackEntry":
@@ -72,19 +74,25 @@ class Game:
             """
             return "".join([f"{move}\n" for move in self.moves])
 
+        def top(self):
+            return self[-1]
+    
     ###############
     #   Internal  #
     ###############
 
     def __init__(self, board: Board) -> None:
-        # The game's history, as a stack of (board, boardstate, move) tuples
+        # The game's history
         self.history: Game._BoardStack = Game._BoardStack()
+
+        # The redo stack
+        self.redo_stack : Game._BoardStack = Game._BoardStack()
 
         # The game's move sinks
         self.sinks: list = []
 
-        # the games move sources
-        self.source: MoveSource
+        # the games move source
+        self.source: MoveSource = None
 
         # The current board
         self.board: Board = board
@@ -303,79 +311,99 @@ class Game:
     ###############
     #    Moves    #
     ###############
-    
-    def play(self):
-        """Starts the game loop."""
-        fifty_moves_announced = False
-        init = True
-        while not self.completed:
-            if not init:
-                # check for special conditions
-                # keep track of whether a draw by fifty moves has been announced
-                # this is so that the draw by fifty moves is only announced once per stalemated position due to fifty moves
-                if self.board.state.clock < 100:
-                    fifty_moves_announced = False
-                # if not checkmate, check for check
-                if self.board.in_check():
-                    print("INFO: " + Info.CHECK)
-                # stalemate
-                elif self.board.stalemate():
-                    # dont return success, as game can be played past a stalemate
-                    print("INFO: " + Info.STALEMATE)
-                # draw by fifty moves
-                if self.board.state.clock >= 100 and not fifty_moves_announced:
-                    print("INFO: " + Info.DRAW_FIFTY)
-                    fifty_moves_announced = True
-                # draw by threefold repetition
-                if self.threefold_repetition():
-                    # TODO: should this be announced every time it occurs, or only once per run of moves?
-                    # i.e. for move A and B, does AB AB AB AB get announced once, or twice?
-                    print("INFO: " + Info.DRAW_THREEFOLD)
-            init = False
+
+    def play_next(self) -> Result[GameSignal]:
+        # get the next move
+        move_res = self.get_next_move()
+        if isinstance(move_res, Failure):
+            return Failure(move_res.unwrap().canonical())
             
-            # get the next move
-            move_res = self.get_next_move()
-            if isinstance(move_res, Failure):
+        move = move_res.unwrap()
+        # check if we have run out of moves
+        if move is None:
+            self.completed = True
+        else:
+            sig = GameSignal(0)
+            # apply the move
+            board_res = self.board.apply_move(move)
+            if isinstance(board_res, Failure):
                 return move_res
+
+            # push the move and board to the history
+            self.history.push(move, self.board)
+
+            # set the new board
+            self.set_board(board_res.unwrap())
+
+            if self.board.state.clock < 100:
+                self.fifty_moves_announced = False
+            # if not checkmate, check for check
+            if self.board.in_check(move.player.opponent()):
+                sig|=GameSignal.CHECK
+            # stalemate
+            elif self.board.stalemate():
+                sig|=GameSignal.STALEMATE
+
+            # draw by fifty moves
+            if self.board.state.clock >= 100:
+                sig|=GameSignal.FIFTY_AVAILABLE
+                
+            # draw by threefold repetition
+            if self.threefold_repetition():
+                sig|=GameSignal.THREEFOLD_AVAILABLE
+                
+            # if the player who just moved is in check, their move was illegal
+            if self.board.in_check(move.player):
+                sig|=GameSignal.ILLEGAL_MOVE
             
-            move = move_res.unwrap()
-            # check if we have run out of moves
-            if move is None:
+            # checkmate
+            if self.board.checkmate():
+                sig|=GameSignal.CHECKMATE
                 self.completed = True
-            else:
-                # apply the move
-                board_res = self.board.apply_move(move)
-                if isinstance(board_res, Failure):
-                    return move_res
+            
+            return Success(sig)
+                
 
-                # push the move and board to the history
-                self.history.push(move, self.board)
+    def play_all(self):
+        """Starts the game loop on the command line."""
+        while not self.completed:
+            play_res = self.play_next()
+            if isinstance(play_res, Failure):
+                return play_res.unwrap()
+            elif play_res is None:
+                break
+            signal = play_res.unwrap()
+            if signal & GameSignal.CHECKMATE:
+                print(Info.CHECKMATE)
+            elif signal & GameSignal.CHECK:
+                print(Info.CHECK)
+            elif signal & GameSignal.STALEMATE:
+                print(Info.STALEMATE)
+            if signal & GameSignal.FIFTY_AVAILABLE:
+                print(Info.DRAW_FIFTY)
+            if signal & GameSignal.THREEFOLD_AVAILABLE:
+                print(Info.DRAW_THREEFOLD)
 
-                # set the new board
-                self.set_board(board_res.unwrap())
-                
-                # if the player who just moved is in check, their move was illegal
-                if self.board.in_check(move.player):
-                    return Failure(Error.ILLEGAL_MOVE % move.canonical())
-                
-                # checkmate
-                if self.board.checkmate():
-                    print("INFO: " + Info.CHECKMATE)
-                    self.completed = True
-                
-        # check that the next move pulled is None or Success(None)
+
+        # check that the next move pulled is None (indicating no more moves in the source)
         # try to pull another move from the source
         trailing_move_res = self.get_next_move()
         inner = trailing_move_res.unwrap()
         # if a move was pulled, it is illegal
         if inner is not None:
-                return Failure(Error.ILLEGAL_MOVE % inner.canonical())
+            return Failure(Error.ILLEGAL_MOVE % inner.canonical())
+            
         
     def set_board(self, new_board) -> Result[Board]:
         self.board = new_board
         return Success(new_board)
 
     def get_next_move(self) -> Result[Union[Move, None]]:
+        """Returns the next move from the move source after validating it.
+
+        Returns:
+            Result[Union[Move, None]]: _description_
+        """
         fetch = self.source.get_next()
         if fetch.unwrap() is None or self.source.exhausted:
             return Success(None)
@@ -409,6 +437,20 @@ class Game:
                 if positions >= 3:
                     return True
         return False
+
+    def undo(self):
+        if len(self.history) == 0:
+            return
+        past = self.history.pop()
+        self.redo_stack.push(past.move, past.board)
+        self.board = past.board
+
+    def redo(self):
+        if len(self.redo_stack) == 0:
+            return
+        future = self.redo_stack.pop()
+        self.history.push(future.move, future.board)
+        self.board = future.board
 
     ###############
     #   Outputs   #
