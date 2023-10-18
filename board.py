@@ -2,7 +2,7 @@
 
 import re
 from copy import deepcopy
-from typing import Dict, Iterator, List, Tuple, Union, overload
+from typing import Dict, List, Tuple, Union, overload
 
 
 from common import *
@@ -42,7 +42,7 @@ class BoardNode:
         """Which walls are present on this tile"""
 
     def __str__(self) -> str:
-        return f"Node({self.contents=}, {self.mined=}, {self.trapdoor=}, {Wall.to_str(self.walls)})"
+        return f"Node({self.contents}, {self.mined}, {self.trapdoor}, {Wall.to_str(self.walls)})"
 
     def __repr__(self):
         return self.canonical()
@@ -161,7 +161,7 @@ class BoardState:
         """The halfmove clock"""
 
     def __repr__(self) -> str:
-        return f"BoardState({self.player=}, ...)"
+        return f"BoardState({self.player}, ...)"
 
     def __str__(self) -> str:
         return repr(self)
@@ -343,6 +343,10 @@ class Board:
 
     def __str__(self) -> str:
         return repr(self)
+    
+    def __eq__(self, __o:"Board") -> bool:
+        # only compares the actual board, not the status line
+        return self.canonical().split("\n")[:-1] == __o.canonical().split("\n")[:-1]
 
     def copy(self) -> "Board":
         """Returns a copy of the board."""
@@ -389,7 +393,7 @@ class Board:
         """
         in_check = []
         for owner, king_pos in self.get_kings_pos().items():
-            if k := self.being_attacked_at(king_pos, owner.opponent()):
+            if self.being_attacked_at(king_pos, owner.opponent()):
                 in_check.append(owner)
                 continue
         if player is None:
@@ -407,7 +411,7 @@ class Board:
 
     def checkmate(
         self, player: Union[Player, None] = None
-    ) -> Union[Player, None, bool]:  # TODO
+    ) -> Union[Player, None, bool]:
         """Determines if any player is in checkmate
 
         Returns
@@ -447,7 +451,13 @@ class Board:
         attacking_positions = self.being_attacked_at(king_pos, player.opponent())
         # check if a wall can block the check
         if self.state.walls[player] > 0 and len(attacking_positions) == 1:
-            return None
+            delta = (attacking_positions[0] - king_pos).norm()
+            # cardinal motion can always be blocked by a wall
+            if delta.x == 0 or delta.y == 0:
+                return None
+            # diagonal can only be blocked if a wall already exists somewhere between the attacker and the king
+            elif any(self[tile].walls for tile in self.get_between(king_pos, attacking_positions[0])):
+                return None
 
         for attacker in attacking_positions:
             # get the line between the attacker and the king
@@ -458,7 +468,7 @@ class Board:
             pieces = [
                 pos
                 for pos in run
-                if (inner := self[pos].contents) is not None and inner.owner == player
+                if self[pos].contents is not None and self[pos].contents.owner == player
             ]
             # check if any pieces can block the run
             # for each piece
@@ -544,10 +554,6 @@ class Board:
                     break
             return []
 
-        ###############################################
-        # TODO: apparently pieces are being attacked through walls. love that for them. kinda unhelpful tho.
-        # reproduce on 000072_random.board when the black rook on b5 attacks the white king on b8 through b8's north wall
-        ###############################################
 
         positions: List[Position] = []
         # immediate neighbours
@@ -655,7 +661,6 @@ class Board:
         if actor is None:
             return []
         player = actor.owner
-        # TODO: implement strict - only allow moves that follow rules etc...
         # if the piece is not owned by the current player, return an empty list
         if strict and player != self.state.player:
             return []
@@ -961,7 +966,7 @@ class Board:
             The positions between the two given positions.
         """
         # get the direction of the movement
-        direction = (start - end).norm()
+        direction = (end-start).norm()
         # get the line between the two positions
         line = self.get_line(start, direction)
         # remove positions past the end
@@ -998,10 +1003,12 @@ class Board:
         """
         # generate a list of the coordinates of the nodes along the line
         base = []
-        i = 0
-        while Board.on_board(pos := origin + direction * i):
-            base.append(pos)
+        i = 1
+        line_pos = origin
+        while Board.on_board(line_pos):
+            base.append(line_pos)
             i += 1
+            line_pos += direction
         # get the run of the line
         return base
 
@@ -1378,7 +1385,6 @@ class Board:
         # clear this node
         self[pos].contents = None
 
-        # TODO: remove the mine? (assume yes)
         # remove the mine
         self[pos].mined = False
 
@@ -1465,7 +1471,7 @@ class Board:
 
     def move_piece(
         self, move: Move
-    ):  # TODO: piece captures, check, checkmate, halfmoves
+    ):
         """Private method for performing a standard move.
 
         Does not perform any validation.

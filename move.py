@@ -22,10 +22,6 @@ class Move:
 
     @classmethod
     def from_str(cls, player: Player, string: str) -> Result["Move"]:
-        # TODO: wall transformation from direction-position to position-position
-        # TODO: pawn promotion transformation
-        # TODO: check that failures are passing correctly
-        # TODO: ensure valid coordinates
         if cls.std_move_re.match(string):
             origin, dest = string[:2], string[3:5]
             if "=" in string:
@@ -123,7 +119,6 @@ class PlaceWall(Move):
         self.wall = wall
 
     def canonical(self) -> str:
-        # TODO: Implement the fact the only south/west walls are allowed
         if self.wall & Wall.SOUTH:
             return f"_{self.origin.canonical()}"
         elif self.wall & Wall.WEST:

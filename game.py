@@ -36,8 +36,9 @@ class Game:
 
         def push(
             self, move: Move, board: Board
-        ) -> Result["Game._StackEntry"]:  ## TODO: tuple ordering here is kinda screwey
-            self.__stack.append(entry := Game._StackEntry(board, move))
+        ) -> Result["Game._StackEntry"]:
+            entry = Game._StackEntry(board, move)
+            self.__stack.append(entry)
             return Success(entry)
 
         def pop(self) -> "Game._StackEntry":
@@ -262,7 +263,8 @@ class Game:
                             )
 
                     # rooks, bishops and knights
-                    elif (piece := node.contents.name) in ["rook", "bishop", "knight"]:
+                    elif node.contents.name in ["rook", "bishop", "knight"]:
+                        piece = node.contents.name
                         # update promotions
                         if pieces[node.contents.owner][piece] > 2:
                             # if there are more than 2 rooks, there there must have been a promotion
@@ -290,7 +292,7 @@ class Game:
         for player in pieces:
             if sum(pieces[player].values()) > 16:
                 # find last node with a piece of the offending color
-                last: tuple | None = None
+                last = None
                 for y, row in enumerate(self.board):
                     for x, node in enumerate(row):
                         if node.contents is not None and node.contents.owner == player:

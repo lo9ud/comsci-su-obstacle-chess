@@ -194,7 +194,6 @@ class RemoteConnection:
             ):  # if the user enters Ctrl+C, break out of the loop
                 break
             else:  # if a message is recieved, append it to the list of responses
-                # TODO: try/except on unpack
                 host_friendly_name, timeout = msg.decode().split(":")
                 hosts.add((host_friendly_name, addr, port, timeout))
         # User has ended the search, or timeout reached, so close the multicast socket

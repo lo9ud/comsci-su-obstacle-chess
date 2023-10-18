@@ -27,13 +27,14 @@ import movehandler
 from common import *
 
 import stddraw
+import color
 import picture
 from tkinter.filedialog import askopenfile, asksaveasfile
 
 # fps = 30
 REFRESH_RATE = 30
 FONT_WEIGHT = 24
-CHAR_WIDTH = FONT_WEIGHT * 0.550  # calculated experimentally
+CHAR_WIDTH = FONT_WEIGHT * 0.60  # calculated experimentally
 Widget = TypeVar("Widget", bound="AppWidget")
 
 def print_time_tree(tree):
@@ -76,12 +77,12 @@ DEBUG_FLAGS = DebugFlags(0)
 class Colors(Enum):
     """Colors used in the game"""
 
-    def clerp(self, color: stddraw.color.Color, amount: float):
+    def clerp(self, _color: color.Color, amount: float):
         """Interpolates between two colors by a given amount"""
-        return stddraw.color.Color(
-            int(self.value.getRed() * (1 - amount) + color.getRed() * amount),
-            int(self.value.getGreen() * (1 - amount) + color.getGreen() * amount),
-            int(self.value.getBlue() * (1 - amount) + color.getBlue() * amount),
+        return color.Color(
+            int(self.value.getRed() * (1 - amount) + _color.getRed() * amount),
+            int(self.value.getGreen() * (1 - amount) + _color.getGreen() * amount),
+            int(self.value.getBlue() * (1 - amount) + _color.getBlue() * amount),
         )
 
     def rotate(self, deg):
@@ -122,59 +123,60 @@ class Colors(Enum):
             + self.value.getGreen() * matrix[2][1]
             + self.value.getBlue() * matrix[2][2]
         )
-        return stddraw.color.Color(
+        return color.Color(
             max(0, min(int(rx), 255)),
             max(0, min(int(gx), 255)),
             max(0, min(int(bx), 255)),
         )
 
-    BLACK = stddraw.color.Color(0, 0, 0)
-    MAGENTA = stddraw.color.Color(255, 0, 255)
+    WHITE = color.Color(255,255,255)
+    BLACK = color.Color(0, 0, 0)
+    MAGENTA = color.Color(255, 0, 255)
 
-    BOARD = stddraw.color.Color(209, 139, 71)
-    BOARD_ALT = stddraw.color.Color(255, 206, 158)
+    BOARD = color.Color(209, 139, 71)
+    BOARD_ALT = color.Color(255, 206, 158)
 
-    WALL = stddraw.color.Color(100, 53, 52)
+    WALL = color.Color(100, 53, 52)
 
-    TRAPDOOR = stddraw.color.Color(255, 255, 255)
-    TRAPDOOR_ALT = stddraw.color.Color(0, 0, 0)
+    TRAPDOOR = color.Color(255, 255, 255)
+    TRAPDOOR_ALT = color.Color(0, 0, 0)
 
-    DIALOG_INNER = stddraw.color.Color(40, 40, 40)
-    DIALOG_BORDER = stddraw.color.Color(0, 0, 0)
-    DIALOG_TEXT = stddraw.color.Color(255, 255, 255)
-    DIALOG_TEXT_ALT = stddraw.color.Color(120, 120, 120)
+    DIALOG_INNER = color.Color(40, 40, 40)
+    DIALOG_BORDER = color.Color(0, 0, 0)
+    DIALOG_TEXT = color.Color(255, 255, 255)
+    DIALOG_TEXT_ALT = color.Color(120, 120, 120)
 
-    MOVE_OVERLAY = stddraw.color.Color(0, 255, 0)
-    MOVE_OVERLAY_BORDER = stddraw.color.Color(0, 0, 0)
+    MOVE_OVERLAY = color.Color(0, 255, 0)
+    MOVE_OVERLAY_BORDER = color.Color(0, 0, 0)
 
-    BUTTON_INNER = stddraw.color.Color(40, 40, 40)
-    BUTTON_BORDER = stddraw.color.Color(0, 0, 0)
-    BUTTON_TEXT = stddraw.color.Color(255, 255, 255)
+    BUTTON_INNER = color.Color(40, 40, 40)
+    BUTTON_BORDER = color.Color(0, 0, 0)
+    BUTTON_TEXT = color.Color(255, 255, 255)
 
-    CHECKBOX_CHECKED = stddraw.color.Color(0, 0, 0)
+    CHECKBOX_CHECKED = color.Color(0, 0, 0)
 
 ########## Constants ###########
 PIECE_IMAGE_FILES = {
-    "K": picture.Picture(r"assets\Chess_klt45.svg.png"),
-    "Q": picture.Picture(r"assets\Chess_qlt45.svg.png"),
-    "R": picture.Picture(r"assets\Chess_rlt45.svg.png"),
-    "B": picture.Picture(r"assets\Chess_blt45.svg.png"),
-    "N": picture.Picture(r"assets\Chess_nlt45.svg.png"),
-    "P": picture.Picture(r"assets\Chess_plt45.svg.png"),
-    "k": picture.Picture(r"assets\Chess_kdt45.svg.png"),
-    "q": picture.Picture(r"assets\Chess_qdt45.svg.png"),
-    "r": picture.Picture(r"assets\Chess_rdt45.svg.png"),
-    "b": picture.Picture(r"assets\Chess_bdt45.svg.png"),
-    "n": picture.Picture(r"assets\Chess_ndt45.svg.png"),
-    "p": picture.Picture(r"assets\Chess_pdt45.svg.png"),
+    "K": picture.Picture(r"Chess_klt45.svg.png"),
+    "Q": picture.Picture(r"Chess_qlt45.svg.png"),
+    "R": picture.Picture(r"Chess_rlt45.svg.png"),
+    "B": picture.Picture(r"Chess_blt45.svg.png"),
+    "N": picture.Picture(r"Chess_nlt45.svg.png"),
+    "P": picture.Picture(r"Chess_plt45.svg.png"),
+    "k": picture.Picture(r"Chess_kdt45.svg.png"),
+    "q": picture.Picture(r"Chess_qdt45.svg.png"),
+    "r": picture.Picture(r"Chess_rdt45.svg.png"),
+    "b": picture.Picture(r"Chess_bdt45.svg.png"),
+    "n": picture.Picture(r"Chess_ndt45.svg.png"),
+    "p": picture.Picture(r"Chess_pdt45.svg.png"),
 }
 OBSTACLE_IMAGE_FILES = {
-    "MINE": picture.Picture(r"assets\landmine_crush.png"),
-    "TRAPDOOR": picture.Picture(r"assets\trapdoor_crush.png"),
+    "MINE": picture.Picture(r"landmine_crush.png"),
+    "TRAPDOOR": picture.Picture(r"trapdoor_crush.png"),
 }
 SETTINGS = {
     "move_overlay": True,
-    "move_animation": True
+    "move_animation": False
 }
 
 
@@ -213,8 +215,8 @@ class Context:
         self.check = check
 
 
-def mod_lightness(color: stddraw.color.Color, lightness):
-    return stddraw.color.Color(
+def mod_lightness(color: color.Color, lightness):
+    return color.Color(
         int(color.getRed() * lightness),
         int(color.getGreen() * lightness),
         int(color.getBlue() * lightness),
@@ -458,7 +460,7 @@ class Rect:
         )
 
 
-class WidgetInner(Dict[Rect, "AppWidget"]):
+class WidgetInner(dict):
     """A dict that stores widgets in order, allowing them to be iterated over in the order they were added"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -649,7 +651,7 @@ class AppWidget:
                         " " * depth + (" |- " if depth else "") + f"Testing {target[1]}"
                     )
                 res = target[1].handle_click(x, y, _rect=target[0], depth=depth + 1)
-                if res:
+                if res is not None:
                     if DEBUG_FLAGS & DebugFlags.CLICK:
                         print(
                             " " * depth
@@ -745,6 +747,7 @@ class AppWidget:
             return self.rect.transform(self.parent.resolve_draw_rect())
         else:
             return self.rect
+
 
 class Container(AppWidget):
     """An invisible container for organizing widgets"""
@@ -936,8 +939,6 @@ class PieceMoveAnimation(BoardAnimation):
             *Rect.from_center(Point(*center),1/8,1/8).transform(rect).center
         )
 
-    
-
 
 class MineAnimation(TileAnimation):
     """The mine detonation animation"""
@@ -987,7 +988,7 @@ class Label(AppWidget):
         self,
         rect: Rect,
         text: str,
-        color: stddraw.color.Color = Colors.DIALOG_TEXT.value,
+        color: color.Color = Colors.DIALOG_TEXT.value,
         _id=None,
     ) -> None:
         super().__init__(rect, _id=_id)
@@ -1009,6 +1010,8 @@ class ButtonSignal(enum.Enum):
     ACCEPT = enum.auto()
     DECLINE = enum.auto()
     SAVE = enum.auto()
+    BLACK = enum.auto()
+    WHITE = enum.auto()
 
     # MAIN MENU
     NEW_GAME = enum.auto()
@@ -1252,11 +1255,15 @@ class PieceButton(AppWidget):
     def __init__(self, rect: Rect, _piece: Piece, _id=None) -> None:
         super().__init__(rect, _id)
         self.piece = _piece
+        self.selected = False
 
     def handle_click(self, *args, **kwargs):
-        return self.piece
+        return self
 
     def draw_self(self, rect: Rect, context: Context = None):
+        if self.selected:
+            stddraw.setPenColor(Colors.WHITE.clerp(stddraw.GREEN, 0.6))
+            stddraw.filledCircle(*rect.center,rect.width/2.2)
         stddraw.picture(
             pic=PIECE_IMAGE_FILES[self.piece.canonical()],
             x=rect.center.x,
@@ -1278,7 +1285,7 @@ class PieceSelector(AppWidget):
                             1 - (i - i % 2 + 1) / (piece_count),
                         ),
                         0.45,
-                        0.9 / piece_count,
+                        2 / piece_count,
                     ),
                     Piece.from_str(name).unwrap(),
                     _id=f"piece_button_{name}",
@@ -1299,24 +1306,33 @@ class BoardConstructor(AppWidget):
         build_menu.register(
             Button(
                 Rect.from_center(Point(0.5, 0.90), 0.7, 0.075),
-                "Standard",
-                ButtonSignal.STANDARD_BOARD,
-                _id="standard_board_button",
+                "Confirm",
+                ButtonSignal.DONE,
+                _id="done_button",
             )
         )
 
         self.piece_selector = build_menu.register(
             PieceSelector(
-                Rect.from_center(Point(0.5, 0.5), 1, 0.6), _id="move_list_box"
+                Rect.from_center(Point(0.5, 0.550), 1, 0.525), _id="move_list_box"
+            )
+        )
+
+        build_menu.register(
+            Button(
+                Rect.from_center(Point(0.5, 0.2), 0.7, 0.075),
+                "Wall",
+                ButtonSignal.WALL,
+                _id="wall_button",
             )
         )
 
         build_menu.register(
             Button(
                 Rect.from_center(Point(0.5, 0.1), 0.7, 0.075),
-                "Confirm",
-                ButtonSignal.DONE,
-                _id="done_button",
+                "Standard",
+                ButtonSignal.STANDARD_BOARD,
+                _id="standard_board_button",
             )
         )
 
@@ -1401,24 +1417,23 @@ class ReplayArea(AppWidget):
                 _id="play_box",
             )
         )
-        self.board.register(
+        self.register(
             Button(
-                Rect.from_center(Point(0.1, 0.5), (1-board_width)/2.1, 0.8),
+                Rect.from_center(Point(0.05, 0.5), 0.08, 0.8),
                 "<",
                 ButtonSignal.PREV,
                 _id="prev_button",
             )
         )
-        self.board.register(
+        self.register(
             Button(
-                Rect.from_center(Point(0.9, 0.5), (1-board_width)/2.1, 0.8),
+                Rect.from_center(Point(0.95, 0.5), 0.08, 0.8),
                 ">",
                 ButtonSignal.NEXT,
                 _id="next_button",
             )
         )
         
-
 
 class PlayArea(AppWidget):
     """The main play area"""
@@ -1493,10 +1508,16 @@ class WallPlacer(AppWidget):
     """An overlay on the board to place walls"""
     def __init__(self, rect, _id: str = "", **props) -> None:
         super().__init__(rect, _id, **props)
+
         for pos in Position.all():
             if pos.x > 0 and pos.y > 0:
                 for wall in [Wall.WEST, Wall.SOUTH]:
                     self.register(WallPlacerButton(wall, pos))
+            elif pos.x > 0:
+                self.register(WallPlacerButton(Wall.WEST, pos))
+            elif pos.y > 0:
+                self.register(WallPlacerButton(Wall.SOUTH, pos))
+
 
 
 class SettingsMenu(AppWidget):
@@ -1564,17 +1585,27 @@ class App:
 
     def __init__(self, size) -> None:
         self.size = size
+        """The size of the app"""
         AppWidget.DEFAULTS[
             "font-weight"
         ] = size.font  # sets this globally as the default font size
         self.current_game: game.Game = None
+        """The game currently being played"""
         self.root: AppDelegate = AppDelegate(
             Rect(0, 0, self.size.width, self.size.height), _id="root"
         )
+        """The root widget of the app"""
         self.move_queue: movehandler.MoveQueue = movehandler.MoveQueue()
+        """The queue of moves to be executed"""
+        
+        # initialise the window
         self.init_size()
 
     def __call__(self, *args, **kwargs):
+        self.run()
+
+    def run(self):
+        """Starts the app"""
         self.start_menu()
 
     def init_size(self):
@@ -1598,19 +1629,32 @@ class App:
         Returns:
             Any: The result of the click
         """
+        
         start = stddraw.time.perf_counter()
+
+        # wait for a click
         while not stddraw.mousePressed():
+            # check if the timeout has been reached
             if (
                 timeout is not None
                 and stddraw.time.perf_counter() - start > timeout * 1000
             ):
+                # timeout reached, return None
                 return None
+            # brief pause to keep the window alive
             stddraw.show(1 / REFRESH_RATE * 1000)
 
+        # get the coordinates of the click
         x, y = stddraw.mouseX(), stddraw.mouseY()
+
+        # recursively handle the click
         res = self.root.handle_click(x, y)
+
+        # print debug info
         if DEBUG_FLAGS & DebugFlags.CLICK:
             print(f"Clicked ({x}, {y}), yields {res}")
+
+        # return the result of the click
         return res
 
     def start_menu(self):
@@ -1618,6 +1662,8 @@ class App:
         while True:
             click_res = None
             self.root.clear()
+
+            # create the menu widget
             menu = self.root.register(MainMenu(_id="main_menu"))
             menu.button_box.clear()
             buttons = [
@@ -1639,15 +1685,18 @@ class App:
                 for i, (name, signal) in enumerate(buttons)
             ]:
                 menu.button_box.register(button)
+
+
             # draw the menu
             self.draw()
 
             # wait for a click
             click_res = self.await_click()
 
+            # handle the click
             if isinstance(click_res, ButtonSignal):
                 if click_res == ButtonSignal.NEW_GAME:
-                    self.new_game_menu()
+                    self.new_game()
                 elif click_res == ButtonSignal.LOAD_GAME:
                     self.load_game_menu()
                 elif click_res == ButtonSignal.SETTINGS:
@@ -1659,6 +1708,8 @@ class App:
         """Present the settings menu"""
         global SETTINGS
         self.root.clear()
+
+        # create the settings menu widget
         settings = self.root.register(
             SettingsMenu(
                 Rect(0, 0, 1, 1),
@@ -1666,12 +1717,18 @@ class App:
             )
         )
         while True:
+            # draw the menu
             self.draw()
+
+            
+            # wait for a click
             click_res = self.await_click()
 
+
+            # handle the click
             if isinstance(click_res, ButtonSignal):
                 if click_res == ButtonSignal.CREDITS:
-                    with open("assets/CREDITS.txt") as f:
+                    with open("CREDITS.txt") as f:
                         self.dialog(
                             "Credits:",
                             f.read(),
@@ -1681,13 +1738,15 @@ class App:
                 elif click_res == ButtonSignal.RETURN:
                     break
             elif isinstance(click_res, CheckBox):
+                # if the click was on a checkbox, set all settings to the relevant checkbox state
                 SETTINGS["move_overlay"] = bool(settings.overlay_check.state)
                 SETTINGS["move_animation"] = bool(settings.animation_check.state)
 
     def construct_game(self):
-        """Construct a new game from scratch
-        """
+        """Construct a new game from scratch"""
         self.root.clear()
+
+        # create the board constructor widget
         self.root.register(
             BoardConstructor(
                 Rect(0, 0, 1, 1),
@@ -1696,40 +1755,208 @@ class App:
             )
         )
 
-        selected_piece = None
-        running_board = board.Board.empty_board().unwrap()
+        
+
+        # initialise the current game
         self.current_game = game.Game(board.Board.empty_board().unwrap())
-        self.current_game.set_move_source(movehandler.QueuedMoveSource(self.move_queue))
+
+        # describe mechanics to user
+        context = Context(self.current_game, [], [])
+        self.update(context)
+        self.notice(
+            "Constuct your starting board by putting pieces on the board\nSelect Standard for a standard chess board.\nMines and trapdoors can only be\nplaced on standard boards."
+        )
+        # the most recently selected piece
+        selected_piece = None
+
+        # the number of placed walls
+        placed_walls = 0
+
+        # the second most recently selected PieceButton
+        prev = None
+
+        # begin the main loop
         while True:
-            context = Context(self.current_game, [], [])
             self.update(context)
             self.draw()
+
+            # wait for a click
             click_res = self.await_click()
+
+            # handle the click
             if isinstance(click_res, ButtonSignal):
-                if click_res == ButtonSignal.DONE:
-                    running_board.standardise_status()
-                    start_game = game.Game(running_board)
-                    if isinstance(start_game.validate(), Failure):
-                        self.notice("Invalid board!")
+                if click_res == ButtonSignal.DONE: # board construction finished
+                    if placed_walls > 6:
+                        self.notice("Too many walls placed!")
+                        continue
+                    # standarise the status osthat castling rights are consistent with the state of the board
+                    self.current_game.board.standardise_status()
+                   
+                    # distribute the remaining walls among players 
+                    self.distribute_walls(placed_walls)
+
+                    # validate the game and board
+                    validation_res = self.current_game.validate()
+
+                    # if the validation fails, notify the user and continue, else break from the loop
+                    if isinstance(validation_res, Failure):
+                        self.notice(f"Invalid board\n{validation_res.unwrap()}")
+                        continue
                     else:
-                        self.current_game = start_game
+                        starting_player = self.dialog(
+                            "Starting player",
+                            "Select the starting player:",
+                            [("Black", ButtonSignal.BLACK), ("White", ButtonSignal.WHITE)]
+                        )
+                        if starting_player == ButtonSignal.BLACK:
+                            self.current_game.board.state.player = Player.BLACK
+                        elif starting_player == ButtonSignal.WHITE:
+                            self.current_game.board.state.player = Player.WHITE
+                            
                         break
-                elif click_res == ButtonSignal.STANDARD_BOARD:
+
+                elif click_res == ButtonSignal.STANDARD_BOARD: # create a standard board
                     self.current_game = game.Game(board.Board.standard_board().unwrap())
-                    self.current_game.set_move_source(
-                        movehandler.QueuedMoveSource(self.move_queue)
-                    )
+                    # begin the setup phase
                     self.setup_phase()
                     break
-            elif isinstance(click_res, BoardTile):
-                if selected_piece:
-                    running_board[click_res.pos].contents = selected_piece
-            elif isinstance(click_res, Piece):
-                selected_piece = click_res
 
+                elif click_res == ButtonSignal.WALL:
+                    # check that the player can play a wall
+                    if sum(self.current_game.board.state.walls.values())> 0:
+                        # create the wall placement widget
+                        placer = self.root.get_by_id("play_box").register(WallPlacer(Rect(0, 0, 1, 1)))
+                        while True:
+                            self.draw()
+
+                            # wait for a click
+                            click_res = self.await_click()
+
+                            # handle the click
+                            if isinstance(click_res, WallPlacerButton): # overlay clicked
+                                if self.current_game.board[click_res.pos].walls & click_res.wall: 
+                                    # remove the wall
+                                    placed_walls -= 1
+                                    self.current_game.board[click_res.pos].walls &= ~click_res.wall
+                                    self.current_game.board[click_res.wall.blocking(click_res.pos)].walls &= ~click_res.wall.alternate()
+                                else:
+                                    # add the wall
+                                    placed_walls += 1
+                                    self.current_game.board[click_res.pos].walls |= click_res.wall
+                                    self.current_game.board.normalise_walls()
+                                    # remove the wall placement widget
+                                self.root.get_by_id("play_box").deregister(placer)
+                                break
+                            
+                            elif isinstance(click_res, ButtonSignal): # button clicked
+                                # the only button that can be clicked is the wall button, to close the wall overlay
+                                if click_res == ButtonSignal.WALL:
+                                    self.root.get_by_id("play_box").deregister(placer)
+                                    break
+                    else:
+                        # inform player that they have no walls remaining
+                        self.notice(
+                            f"No walls remaining for player {self.current_game.board.state.player.name.capitalize()}!"
+                        )
+            
+            elif isinstance(click_res, BoardTile): # tile selected
+                # if a piece has been selected, place that piece, else clear that tile
+                if selected_piece:
+                    self.current_game.board[click_res.pos].contents = selected_piece
+                else:
+                    self.current_game.board[click_res.pos].contents = None
+            
+            elif isinstance(click_res, PieceButton): # piece selected
+                # if the piece selected is the same as the last selected, clear the selection
+                # else, select the new piece
+                # in both cases, update the selected properties to highlight only the selected piece
+                if selected_piece == click_res.piece:
+                    selected_piece = None
+                    click_res.selected = False
+                    prev = None
+                else:
+                    selected_piece = click_res.piece
+                    click_res.selected = True
+                    if prev:
+                        prev.selected = False
+                    prev = click_res
+                
+    def distribute_walls(self, placed_walls):
+        
+        remaining_walls = 6-placed_walls
+
+        # check that there are walls to distribute
+        if remaining_walls == 0:
+            self.current_game.board.state.walls = {
+                Player.WHITE:0,
+                Player.BLACK:0
+            }
+            return
+
+        constructor = self.root.get_by_id("play_box")
+        box = constructor.register(
+            Box(Rect(0.10,0.3,0.9,0.7))
+        )
+        box.register(
+            Label(
+                Rect.from_center(Point(0.5, 0.9), 1, 0.2),
+                f"Distribute {remaining_walls} remaining walls"
+            )
+        )
+        box.register(
+            Label(
+                Rect.from_center(Point(0.1, 0.4), 0.2, 0.8),
+                "White"
+            )
+        )
+        dist_cont = box.register(
+            Container(
+                Rect(0.2,0.0,0.8,0.8)
+            )
+        )
+        box.register(
+            Label(
+                Rect.from_center(Point(0.9, 0.4), 0.2, 0.8),
+                "Black"
+            )
+        )
+
+        for i in range(remaining_walls + 1):
+            dist_cont.register(
+                Button(
+                    Rect.from_center(Point(0.1 + (i)*0.8/remaining_walls, 0.5), 0.15, 0.2),
+                    "<" if i<remaining_walls/2 else (">" if i>remaining_walls/2 else "O"),
+                    i
+                )
+            )
+        white_walls = 0
+        while True:
+            self.draw()
+            click_res = self.await_click()
+            if isinstance(click_res, int):
+                white_walls = click_res
+                accept = self.dialog(
+                    "Confirm",
+                    f"White: {white_walls}\nBlack: {remaining_walls - white_walls}",
+                    [("Accept", ButtonSignal.ACCEPT), ("Cancel", ButtonSignal.DECLINE)],
+                    None,
+                )
+                if accept == ButtonSignal.ACCEPT:
+                    self.current_game.board.state.walls = {
+                        Player.WHITE:white_walls,
+                        Player.BLACK:remaining_walls - white_walls
+                    }
+                    break
+                else:
+                    continue
+
+        
+
+    
     def setup_phase(self):
         """Allow the user to place obstacles on the board as part of the setup phase"""
         remaining_moves = 4
+        # Generate a list of all the spaces each obstacle can be placed
         mine_moves = [
             PlaceMine(p, P(x, y + 3))
             for x in range(8)
@@ -1742,7 +1969,11 @@ class App:
             for y in range(4)
             for p in [Player.WHITE, Player.BLACK]
         ]
+
+
         self.root.clear()
+
+        # create the obstacle placemnet widget
         self.root.register(
             ObstaclePlacement(
                 Rect(0, 0, 1, 1),
@@ -1750,7 +1981,10 @@ class App:
                 _id="obstacle_placement",
             )
         )
+
+        # the most recently selected obstacle
         selected_obstacle = None
+
         while remaining_moves > 0:
             potential_moves = (
                 []
@@ -1764,17 +1998,22 @@ class App:
             click_res = self.await_click()
 
             if isinstance(click_res, ButtonSignal):
-                if click_res == ButtonSignal.PASS:
+                if click_res == ButtonSignal.PASS: # player has passed on their opportunity to place an obstacle
+                    # push a null move to the game
                     self.move_queue.push(NullMove(self.current_game.board.state.player))
                     self.play_next()
                     remaining_moves -= 1
-                elif click_res == ButtonSignal.SKIP:
+                elif click_res == ButtonSignal.SKIP: # user has decided to progress
+                    # ensure that both players have had the same number of placement opportunities
                     if remaining_moves % 2 != 0:
-                        self.notice("Obstacles must be placed in pairs!")
+                        self.notice("Both players must make the same number of placements/passes!")
                     else:
                         break
                 else:
+                    # obstacle selected
                     selected_obstacle = click_res
+
+                    # check that the player can place one of the selected obstacles
                     if (
                         self.current_game.board.initial_moves[
                             self.current_game.board.state.player
@@ -1785,9 +2024,12 @@ class App:
                             f"No more obstacles of that type for player {self.current_game.board.state.player.name.capitalize()}"
                         )
                         selected_obstacle = None
-            elif isinstance(click_res, BoardTile) and selected_obstacle:
-                target = self.current_game.board[click_res.pos]
+
+            elif isinstance(click_res, BoardTile) and selected_obstacle: # place the obstacle
+                # get the current player
                 player = self.current_game.board.state.player
+
+                # push the required move to the game and update initial move counts
                 if selected_obstacle == ButtonSignal.MINE:
                     self.move_queue.push(PlaceMine(player, click_res.pos))
                 elif selected_obstacle == ButtonSignal.TRAPDOOR:
@@ -1796,55 +2038,24 @@ class App:
                 remaining_moves -= 1
                 self.play_next()
 
-    def new_game_menu(self):
+    def new_game(self):
         """Present the menu to the user to start a new game
         
         (DEFUNCT: Only local play is currently implemented)
         """
+        # construct the game
         self.construct_game()
+
+        # begin play loop
         self.play()
-        # while True:
-        #     self.root.clear()
-        #     menu_box = self.root.register(MainMenu(_id="new_game_menu")).button_box
-        #     buttons = [
-        #         ("Local", ButtonSignal.LOCAL),
-        #         # ("AI", ButtonSignal.AI),
-        #         # ("Online", ButtonSignal.ONLINE),
-        #         ("Return", ButtonSignal.RETURN),
-        #     ]
-        #     slots = len(buttons)
 
-        #     for button in [
-        #         Button(
-        #             Rect.from_center(
-        #                 Point(0.5, (slots - i - 0.5) / slots * 0.8 + 0.1), 0.7, 0.15
-        #             ),
-        #             name,
-        #             signal,
-        #         )
-        #         for i, (name, signal) in enumerate(buttons)
-        #     ]:
-        #         menu_box.register(button)
-
-        #     context = Context(self.current_game, [], [])
-        #     self.update(context)
-        #     self.draw()
-        #     click_res = self.await_click()
-
-        #     if isinstance(click_res, ButtonSignal):
-        #         if click_res == ButtonSignal.LOCAL:
-        #             self.play_local()
-        #         elif click_res == ButtonSignal.AI:
-        #             self.notice("AI is currently not implemented.")
-        #         elif click_res == ButtonSignal.ONLINE:
-        #             self.notice("Online play is currently not implemented.")
-        #         elif click_res == ButtonSignal.RETURN:
-        #             return
-
+    
     def load_game_menu(self):
         """Presents the load game menu to the user"""
         while True:
             self.root.clear()
+
+            # create the load game widget
             menu_box = self.root.register(MainMenu(_id="new_game_menu")).button_box
             buttons = [
                 ("From File", ButtonSignal.FROM_FILE),
@@ -1865,10 +2076,14 @@ class App:
                 menu_box.register(button)
 
             self.draw()
+
+            # wait for a click
             click_res = self.await_click()
 
+            # handle the click
             if isinstance(click_res, ButtonSignal):
-                if click_res == ButtonSignal.FROM_FILE:
+                if click_res == ButtonSignal.FROM_FILE: # open a board file
+                    # attempt to get a file from the user
                     try:
                         board_file = askopenfile(
                             filetypes=[
@@ -1881,15 +2096,23 @@ class App:
                     except Exception:
                         self.notice("Invalid file!")
                         continue
-                    if board_file is None or not board_file.readable():
+
+                    # ensure that a valid file was selected
+                    if board_file is None:
                         self.notice("Invalid file!")
                         continue
+
+                    # read in the file and strip comments
                     board_str = [
                         line
                         for line in board_file.read().split("\n")
                         if not (line.startswith("%") or line == "")
                     ]
+
+                    # create the board
                     board_res = board.Board.from_strs(board_str)
+
+                    # ensure that the board is valid, and if so, instantiae the game and play
                     if isinstance(board_res, Failure):
                         self.notice(f"Invalid board!\n{board_res.unwrap()}")
                         continue
@@ -1899,95 +2122,112 @@ class App:
                             movehandler.QueuedMoveSource(self.move_queue)
                         )
                         self.play()
-                elif click_res == ButtonSignal.REPLAY:
+
+                elif click_res == ButtonSignal.REPLAY: # replay a saved game
+                    # attempt to get the board and game files from the user
                     self.notice("Select a board file to replay from", timeout=0)
-                    board_file = askopenfile()
+                    board_file = askopenfile(title="Select a board file", filetypes=[("Board Files", "*.board"),("All Files", "*.*")])
                     self.notice("Select a move file to replay from", timeout=0)
-                    move_file = askopenfile()
+                    move_file = askopenfile(title="Select a gem file", filetypes=[("Move Files", "*.game"),("All Files", "*.*")])
+                    
+                    # ensure files are valid
                     if board_file is None or move_file is None:
                         self.notice("Invalid file!")
                         continue
+
+                    # read in the board file and remove comments
                     board_str = [
                         line
                         for line in board_file.read().split("\n")
                         if not (line.startswith("%") or line == "")
                     ]
+
+                    # validate the board
                     board_res = board.Board.from_strs(board_str)
                     if isinstance(board_res, Failure):
                         self.notice(f"Invalid board!\n{board_res.unwrap()}")
                         continue
                     elif isinstance(board_res, Success):
                         self.current_game = game.Game(board_res.unwrap())
+
+                    # set the move source to be the move file
                     self.current_game.set_move_source(movehandler.FileSource(move_file))
+
+                    # confirmdetials with user
                     self.notice(
-                        f"Replaying\n'{os.path.relpath(move_file.name)}'\non board\n'{os.path.basename(board_file.name)}'"
+                        f"Replaying\n'{os.path.relpath(move_file.name)}'\non board\n'{os.path.relpath(board_file.name)}'"
                     )
+
+                    # close the board file, as it is no longer needed
                     board_file.close()
-                    move_file.close()
+
+                    # begin the replay
                     self.replay()
-                elif click_res == ButtonSignal.RETURN:
+
+                    # close the move file as it is no longer needed
+                    move_file.close()
+
+                elif click_res == ButtonSignal.RETURN: # return to main menu
                     return
 
     def play(self):
         """Plays the game from the currently loaded game"""
         self.root.clear()
+
+        # initialise the move queue
+        self.current_game.set_move_source(movehandler.QueuedMoveSource(self.move_queue))
+
+        # create the play area widget
         self.root.register(
             PlayArea(
                 Rect(0, 0, 1, 1), self.size.height / self.size.width, _id="play_area"
             )
         )
 
+        # the position moves are coming from
         move_origin = None
 
         context = Context(self.current_game, [], [])
         self.update(context)
+
+        # announce the first player
         self.announce_start()
+
+
         while True:
             self.update(context=context)
             self.draw()
             player = context.game.board.state.player
+            pushed_move = False
+
+            # wait for a click
             click_res = self.await_click()
-            if isinstance(click_res, BoardTile):
+
+            # handle the click
+            if isinstance(click_res, BoardTile): # clicked the board
+                # get the contents of the clicked position
                 contents = context.game.board[click_res.pos].contents
-                # create and push a move
+
+                # if a move construction is in progress, and the click position is a valid move, create and push the move
                 if move_origin is not None and click_res.pos in list(
                     map(lambda x: x.destination, context.potential_moves)
-                ):
+                ):  
+                    # semipromotions are used do describe the motion, but not the promotion made by a pawn
                     if isinstance(click_res.potential_move, SemiPromotion):
+                        # if the returned move is a semi promotion, complete the promotion and create the move
                         promotion = self.ask_promotion(click_res.potential_move.player)
                         new_move = Promotion.from_semi(
                             click_res.potential_move, promotion
                         )
                     else:
                         new_move = click_res.potential_move
+
+                    # push the move to the game
                     self.move_queue.push(new_move)
-                    play_res = self.play_next()
-                    if isinstance(play_res, Failure) or play_res.unwrap() is None:
-                        self.notice(f"Invalid move: {play_res.unwrap()}", context)
-                    elif isinstance(play_res, Success):
-                        self.update(context)
-                        self.draw()
-                        signals = play_res.unwrap()
-                        if (
-                            signals & GameSignal.ILLEGAL_MOVE
-                        ):  # TODO: Remove, shouldn't be possible anyways
-                            self.notice("Illegal move!", context)
-                        if signals & GameSignal.CHECKMATE:
-                            self.win(player, GameSignal.CHECKMATE)
-                            break
-                        if signals & GameSignal.CHECK:
-                            pass
-                        if signals & (
-                            GameSignal.FIFTY_AVAILABLE | GameSignal.THREEFOLD_AVAILABLE
-                        ):
-                            draw_accepted = self.offer_draw(player)
-                            if draw_accepted:
-                                self.notice("Draw has been accepted.", context)
-                        if self.current_game.board.mine_detonated:
-                            self.mine_animation(click_res.pos)
-                    context.potential_moves = []
+                    pushed_move = True
+
                 # select a piece
-                elif contents is not None:  # TODO: deselect piece on click
+                elif contents is not None:
                     move_origin = click_res
                     allowed_moves = context.game.board.get_moves(
                         click_res.pos, strict=True
@@ -1997,35 +2237,93 @@ class App:
                 else:
                     context.potential_moves = []
                     move_origin = None
-            elif isinstance(click_res, ButtonSignal):
-                if click_res == ButtonSignal.WALL:
+
+            elif isinstance(click_res, ButtonSignal): # menu button clicked
+                if click_res == ButtonSignal.WALL: # player wants to play a wall
+                    # check that the player can play a wall
                     if (
                         self.current_game.board.state.walls[
                             self.current_game.board.state.player
                         ]
                         > 0
                     ):
+                        # show the wall placement overlay
                         if self.place_wall():
+                            # if a wall was placed, inform the player of their remaining walls
                             self.notice(
                                 f"{self.current_game.board.state.walls[self.current_game.board.state.player.opponent()]} walls remaining for player {self.current_game.board.state.player.opponent().name.capitalize()}"
                             )
+                            pushed_move = True
                     else:
+                        # inform player that they have no walls remaining
                         self.notice(
                             f"No walls remaining for player {self.current_game.board.state.player.name.capitalize()}!"
                         )
-                elif click_res == ButtonSignal.UNDO:
+                elif click_res == ButtonSignal.UNDO: # undo the most recent move
                     self.current_game.undo()
-                elif click_res == ButtonSignal.REDO:
+                elif click_res == ButtonSignal.REDO: # redo the most recent undo
                     self.current_game.redo()
-                elif click_res == ButtonSignal.MENU:
+                elif click_res == ButtonSignal.MENU: # open the in-game menu
                     menu_result = self.ingame_menu()
-                    if menu_result == ButtonSignal.QUIT:
+                    if menu_result == ButtonSignal.QUIT: # quit the game
                         return
-                    elif menu_result == ButtonSignal.SAVE_GAME:
+                    elif menu_result == ButtonSignal.SAVE_GAME: # save the game
                         self.save_game()
+            
+            if pushed_move:
+                # clear the potential moves and update in preparation for the move animation
+                context.potential_moves = []
+                self.update(context)
+
+                # tell the game to pull the next move
+                play_res = self.play_next()
+
+                # check that the move is valid
+                if isinstance(play_res, Failure) or play_res.unwrap() is None:
+                    # here to ensure that only valid moves can be played, but shouldn't eveer happen
+                    self.notice(f"Invalid move: {play_res.unwrap()}")
+                elif isinstance(play_res, Success):
+                    self.update(context)
+                    self.draw()
+                    signals = play_res.unwrap()
+                    if (
+                        signals & GameSignal.ILLEGAL_MOVE
+                    ):  # same as above
+                        self.notice(f"Invalid move: {play_res.unwrap()}")
+                    if signals & GameSignal.CHECKMATE:
+                        # player has been checkmated
+                        self.win(player, GameSignal.CHECKMATE)
+                        return
+                    
+                    if signals & GameSignal.STALEMATE:
+                        self.notice("The game has stalemated!")
+                        return
+
+                    if signals & GameSignal.CHECK:
+                        # player is in check
+                        pass
+                    if signals & (
+                        GameSignal.FIFTY_AVAILABLE | GameSignal.THREEFOLD_AVAILABLE
+                    ):
+                        # a draw is available
+
+                        # allow the player to offer a draw
+                        draw_accepted = self.ask_offer_draw(signals & (
+                        GameSignal.FIFTY_AVAILABLE ^ GameSignal.THREEFOLD_AVAILABLE
+                    ))
+
+                        # if the draw is accepted, notify and quit
+                        if draw_accepted == ButtonSignal.ACCEPT:
+                            self.notice("Draw has been accepted.")
+                            return
+                        
+                    # if a mine was detonated, run the mine detonation animation
+                    if self.current_game.board.mine_detonated:
+                        self.mine_animation(click_res.pos)
 
     def save_game(self):
         """Presents a dialog to save the board and game to a file"""
+        # attempt to get a file to save the board to
         self.notice("Select a file to save the board to", timeout=0)
         while True:
             save_file = asksaveasfile(
@@ -2039,6 +2337,7 @@ class App:
             save_file.close()
             break
 
+        # attempt to get a file to save the moves to
         self.notice("Select a file to save the moves to", timeout=0)
         while True:
             save_file = asksaveasfile(
@@ -2065,12 +2364,19 @@ class App:
         self.draw()
 
     def place_wall(self):
-        """Allow the user to place a wall"""
+        """Allow the user to place a wall by displaying the wall placement overlay"""
+
+        # create the wall placement widget
         placer = self.root.get_by_id("play_box").register(WallPlacer(Rect(0, 0, 1, 1)))
         while True:
             self.draw()
+
+            # wait for a click
             click_res = self.await_click()
-            if isinstance(click_res, WallPlacerButton):
+
+            # handle the click
+            if isinstance(click_res, WallPlacerButton): # overlay clicked
+                # create and push the wall placement move
                 self.move_queue.push(
                     PlaceWall(
                         self.current_game.board.state.player,
@@ -2078,16 +2384,20 @@ class App:
                         click_res.wall,
                     )
                 )
-                self.play_next()
+
+                # remove the wall placement widget
                 self.root.get_by_id("play_box").deregister(placer)
                 return True
-            elif isinstance(click_res, ButtonSignal):
+            
+            elif isinstance(click_res, ButtonSignal): # button clicked
+                # the only button that can be clicked is the wall button, to close the wall overlay
                 if click_res == ButtonSignal.WALL:
                     self.root.get_by_id("play_box").deregister(placer)
                 return False
 
     def ingame_menu(self):
         """Present the in-game menu to the user"""
+        # create the menu widget
         menu_box = self.root.register(Box(Rect.from_center(Point(0.5, 0.5), 0.7, 0.7)))
 
         menu_box.register(
@@ -2115,7 +2425,11 @@ class App:
 
         while True:
             self.draw()
+
+            # wait for a click
             click_res = self.await_click()
+
+            # return the click if its a button, ignore otherwise
             if isinstance(click_res, ButtonSignal):
                 self.root.deregister(menu_box)
                 self.draw()
@@ -2123,6 +2437,8 @@ class App:
 
     def ask_promotion(self, player):
         """Display the promotion selection dialog to the user"""
+
+        # create the promotion selection dialog
         play_box = self.root.get_by_id("play_box")
         box = play_box.register(Box(Rect.from_center(Point(0.5, 0.5), 0.8, 0.5)))
         box.register(
@@ -2143,9 +2459,14 @@ class App:
                     _id=f"promotion_button_{piece}",
                 )
             )
+
+
         self.draw()
         while True:
+            # wait for a click
             click_res = self.await_click()
+
+            # return the selected piece class
             if isinstance(click_res, Piece):
                 play_box.deregister(box)
                 return click_res.__class__
@@ -2156,40 +2477,59 @@ class App:
         The game should already be loaded, with the source set to a FileSource"""
         context = Context(self.current_game, [], [])
         self.root.clear()
+
+        # create the replay widget
         self.root.register(
             ReplayArea(
                 Rect(0, 0, 1, 1), self.size.height / self.size.width, _id="play_area"
             )
         )
         self.update(context)
-        self.notice("Replay starting...\nClick anywhere on the boardto pause replay, and again to resume.\n Use the buttons on the left and right to step.", timeout=1)
+
+        # describe mechanics to user
+        self.notice("Replay starting...\nClick anywhere on the board to pause replay,\n and again to resume.\n Use the buttons on the left and right to step through the game.", timeout=1)
+        
+        # announce the beginning of the game
         self.announce_start()
+
+        # while there are still unplayed moves in the file, play them (without animations)
         while not self.current_game.source.exhausted:
             res = self.play_next(animate=False)
+
+            # if the move file contains invalid moves, notify and exit
             if isinstance(res, Failure):
                 self.notice(f"Invalid move!\n{res.unwrap()}\nTerminating replay.")
                 break
             self.update(context)
             self.draw()
-            stddraw.show(100)
-            click_res = self.await_click(timeout=0)
-            if click_res:
-                if isinstance(click_res, ButtonSignal):
+
+            # wait for a clik, or for 0.1 seconds to pass
+            click_res = self.await_click(timeout=0.1)
+            if click_res: # if a click happened, handle it
+                if isinstance(click_res, ButtonSignal): # next/prev buttons clicked
                     while click_res in [ButtonSignal.NEXT, ButtonSignal.PREV]:
-                        if click_res == ButtonSignal.NEXT:
+                        if click_res == ButtonSignal.NEXT: # step forwards through the game
+                            # if moves have been undone, via stepping backwards, redo those, else play the next move
                             if len(self.current_game.redo_stack) > 0:
                                 self.current_game.redo()
                             elif not self.current_game.source.exhausted:
+                                # play the next move
                                 res = self.play_next(animate=False)
+
+                                # same as above
                                 if isinstance(res, Failure):
                                     self.notice(f"Invalid move!\n{res.unwrap()}\nTerminating replay.")
                                     break
-                            else:
+                            else: # no moves left to play
                                 break
-                        elif click_res == ButtonSignal.PREV:
+
+                        elif click_res == ButtonSignal.PREV: # undo the latest move if possible
                             self.current_game.undo()
                         self.update(context)
                         self.draw()
+
+                        # wait for click
+                        # if its a button press, the above logic for stepping will run again, else it will return to the main replay loop
                         click_res = self.await_click()
                 else:
                     self.await_click()
@@ -2297,7 +2637,7 @@ class App:
             notice_box.register(
                 Button(
                     Rect.from_center(
-                        Point(0.5 + i - len(buttons) // 2, 0.125),
+                        Point(0.1 + (i+0.5)*0.8/len(buttons), 0.125),
                         min(0.2, (0.9 / len(buttons))),
                         0.15,
                     ),
@@ -2323,18 +2663,20 @@ class App:
         """Announce a winner to the user"""
         self.dialog("We have a winner!", f"Player {player.name} has won!", [])
 
-    def ask_offer_draw(self, player, reason):
+    def ask_offer_draw(self, reason):
+        reason_str = "threefold repetition" if reason == GameSignal.THREEFOLD_AVAILABLE else "fifty-move rule"
         ask = self.dialog(
             "Draw Available",
-            f"Player {player.name.capitalize()}, a draw is available due to {reason.name.lower().replace('_', ' ')}.\n Would you like to propose a draw?",
+            f"A draw is available due to {reason_str}.\n Would you like to propose a draw?",
             [("Yes", ButtonSignal.ACCEPT), ("No", ButtonSignal.DECLINE)],
         )
+        return self.offer_draw(reason_str) if ask == ButtonSignal.ACCEPT else ask
 
-    def offer_draw(self, player, reason):
+    def offer_draw(self, reason_str):
         """Offer a draw to the user"""
         return self.dialog(
             "Draw Offer",
-            f"Player {player.name} has offered a draw due to {reason.name.lower().replace('_', ' ')}.\n Would you like to accept?",
+            f"A draw due to {reason_str} has been offered.\n Would you like to accept?",
             [("Accept", ButtonSignal.ACCEPT), ("Decline", ButtonSignal.DECLINE)],
         )
 
@@ -2370,4 +2712,4 @@ if __name__ == "__main__":
         print("Unrecognised arguments:\n\t-:" + "\n\t-: ".join(map(repr, args)))
     else:
         app = App(size)
-        app.start_menu()
+        app.run()
