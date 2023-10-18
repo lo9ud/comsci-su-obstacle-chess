@@ -969,13 +969,15 @@ class Board:
         direction = (end-start).norm()
         # get the line between the two positions
         line = self.get_line(start, direction)
-        # remove positions past the end
-        while line[-1] != end:
+        if line:
+            # remove positions past the end
+            while line[-1] != end:
+                line.pop()
+            # remove the end position
             line.pop()
-        # remove the end position
-        line.pop()
-        # return the run of the line
-        return line
+            # return the run of the line
+            return line
+        return []
 
     def get_line(
         self,
